@@ -9,21 +9,49 @@ import streamlit as st
 # --- FORZAR TEMA CLARO (COPIAR DESDE AQUÍ) ---
 st.markdown("""
     <style>
-    /* Fondo principal blanco */
-    .stApp {
-        background-color: #FFFFFF !important;
+    /* 1. FONDO GENERAL Y CONTENEDORES */
+    /* Forzamos el fondo de toda la página a blanco hueso profesional */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+        background-color: #F8F9FA !important;
     }
-    /* Texto principal oscuro para que se lea bien */
-    .stApp, .stMarkdown, p, h1, h2, h3, h4, h5, h6, label, span {
-        color: #262730 !important;
+
+    /* 2. TEXTO GLOBAL */
+    /* Ponemos todas las letras en gris grafito oscuro para máxima legibilidad */
+    html, body, [class*="css"], .stMarkdown, p, h1, h2, h3, h4, h5, h6, label, span {
+        color: #212529 !important;
     }
-    /* Barra lateral en gris muy clarito */
+
+    /* 3. BARRA LATERAL */
+    /* Un tono gris muy suave para diferenciarla del fondo */
     [data-testid="stSidebar"] {
         background-color: #F0F2F6 !important;
+        border-right: 1px solid #E0E0E0;
     }
-    /* Arreglo para que los inputs (fechas, selectores) se vean bien */
-    .stSelectbox, .stDateInput, .stTextInput {
-        color: #262730 !important;
+
+    /* 4. TARJETAS DE MÉTRICAS (KPIs) */
+    /* Tus cuadros negros ahora serán blancos con un borde elegante */
+    div[data-testid="metric-container"], .stMetric {
+        background-color: #FFFFFF !important;
+        border: 1px solid #DEE2E6 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+        padding: 15px !important;
+    }
+    
+    /* Aseguramos que los números de las tarjetas sean oscuros */
+    [data-testid="stMetricValue"] {
+        color: #000000 !important;
+    }
+
+    /* 5. PESTAÑAS (TABS) */
+    /* Para que las pestañas de 'Dashboard', 'IA', etc. no se vean negras */
+    button[data-baseweb="tab"] {
+        background-color: transparent !important;
+        color: #495057 !important;
+    }
+    button[aria-selected="true"] {
+        color: #007BFF !important; /* Color azul para la pestaña activa */
+        border-bottom-color: #007BFF !important;
     }
     </style>
     """, unsafe_allow_html=True)
