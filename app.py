@@ -619,14 +619,12 @@ with tab_dash:
             ))
 
         fig.update_layout(
-            title=dict(text=f"Levey-Jennings — {analito}",font=dict(color="#c9d1e0")),
-            paper_bgcolor="#080c14", plot_bgcolor="#0d1120",
-            font=dict(color="#c9d1e0"),
-            legend=dict(orientation="h",y=1.06,x=1,xanchor="right",bgcolor="rgba(0,0,0,0)"),
-            xaxis=dict(gridcolor="#1e2740",tickformat="%d %b",title="Fecha"),
-            yaxis=dict(gridcolor="#1e2740",title="Valor"),
-            height=460, margin=dict(l=10,r=130,t=60,b=10), hovermode="x unified",
-        )
+    plot_bgcolor="white",    # Fondo del área del gráfico
+    paper_bgcolor="white",   # Fondo del marco del gráfico
+    font_color="#262730",    # Color de las letras y números
+    xaxis=dict(gridcolor="#e5e5e5"), # Color de las líneas de rejilla
+    yaxis=dict(gridcolor="#e5e5e5")
+)
         st.plotly_chart(fig, use_container_width=True)
 
         # Últimas 7 mediciones
