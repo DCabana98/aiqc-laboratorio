@@ -6,6 +6,28 @@
 # ==============================================================
 
 import streamlit as st
+# --- FORZAR TEMA CLARO (COPIAR DESDE AQUÍ) ---
+st.markdown("""
+    <style>
+    /* Fondo principal blanco */
+    .stApp {
+        background-color: #FFFFFF !important;
+    }
+    /* Texto principal oscuro para que se lea bien */
+    .stApp, .stMarkdown, p, h1, h2, h3, h4, h5, h6, label, span {
+        color: #262730 !important;
+    }
+    /* Barra lateral en gris muy clarito */
+    [data-testid="stSidebar"] {
+        background-color: #F0F2F6 !important;
+    }
+    /* Arreglo para que los inputs (fechas, selectores) se vean bien */
+    .stSelectbox, .stDateInput, .stTextInput {
+        color: #262730 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+# --- FINAL DEL BLOQUE ---
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
