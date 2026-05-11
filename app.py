@@ -145,9 +145,9 @@ tr:hover td { background:#F8F9FA; }
 # ==============================================================
 # Nombres correctos para la API v1beta de Google (2025)
 GEMINI_MODELS = [
+    "models/gemini-2.5-flash",
     "models/gemini-2.0-flash",
     "models/gemini-2.0-flash-lite",
-    "models/gemini-1.5-flash-latest",
 ]
 
 GEMINI_SYSTEM = (
