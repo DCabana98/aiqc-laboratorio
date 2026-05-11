@@ -145,18 +145,21 @@ tr:hover td { background:#F8F9FA; }
 # ==============================================================
 # Nombres correctos para la API v1beta de Google (2025)
 GEMINI_MODELS = [
-    "models/gemini-2.5-flash",
-    "models/gemini-2.0-flash",
-    "models/gemini-2.0-flash-lite",
+    "models/gemini-2.5-flash",       # gratuito · más capaz · 1M tokens contexto
+    "models/gemini-2.0-flash",       # gratuito · rápido y estable
+    "models/gemini-2.0-flash-lite",  # gratuito · más ligero
 ]
 
 GEMINI_SYSTEM = (
-    "Eres AIQC, un experto en Control de Calidad de Laboratorio Clínico "
-    "con 20 años de experiencia en ISO 15189 y CLIA. "
-    "Respondes siempre en español con rigor técnico y clínico. "
+    "Eres AIQC, el sistema automatizado de Control de Calidad de un laboratorio clínico. "
+    "REGLA ABSOLUTA: Cada respuesta DEBE incluir los valores numéricos reales del laboratorio "
+    "(valor medido, media, SD, Z-Score calculado, estado, regla violada) que se te proporcionan "
+    "en el contexto. NUNCA respondas de forma genérica sin citar esos datos. "
+    "Si te piden un plan de corrección, menciona explícitamente qué analito tiene el problema, "
+    "cuál es su Z-Score actual y qué regla de Westgard se ha violado. "
+    "Respondes siempre en español, de forma concisa y técnica. "
     "Usas Markdown (negritas, listas, tablas) para mayor claridad. "
-    "Cuando mencionas Z-Scores siempre muestras la fórmula: Z = (x − μ) / σ "
-    "con los valores reales del dato analizado."
+    "Fórmula Z-Score: Z = (x − μ) / σ. Muéstrala siempre con valores reales."
 )
 
 GEMINI_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
@@ -477,12 +480,17 @@ def ia_responde_gemini(pregunta: str, historial: list,
         )
 
     contexto = (
-        f"=== DATOS DEL LABORATORIO ({f_min} → {f_max}) ===\n"
+        f"=== DATOS REALES DEL LABORATORIO ({f_min} → {f_max}) ===\n"
+        f"INSTRUCCIÓN: USA ESTOS DATOS EN TU RESPUESTA. No respondas de forma genérica.\n"
         f"{chr(10).join(resumen)}\n\n"
         f"=== REGLAS DE WESTGARD ===\n"
-        f"1_3s: ±3SD → Rojo | 2_2s: 2 consec ±2SD → Rojo | "
-        f"4_1s: 4 consec ±1SD → Ámbar | 1_2s: ±2SD → Ámbar\n\n"
-        f"=== PREGUNTA ===\n{pregunta}"
+        f"1_3s: 1 punto fuera ±3SD → Rojo (error aleatorio grave)\n"
+        f"2_2s: 2 consecutivos fuera ±2SD mismo lado → Rojo (error sistemático)\n"
+        f"4_1s: 4 consecutivos fuera ±1SD mismo lado → Ámbar (deriva)\n"
+        f"1_2s: 1 punto fuera ±2SD → Ámbar (advertencia)\n\n"
+        f"=== PREGUNTA DEL USUARIO ===\n{pregunta}\n\n"
+        f"IMPORTANTE: Responde citando los valores numéricos reales de los analitos "
+        f"listados arriba. Menciona explícitamente el analito, su valor, Z-Score y estado."
     )
 
     # Historial multi-turn
