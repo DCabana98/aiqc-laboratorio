@@ -160,7 +160,7 @@ def init_gemini():
         return None
     genai.configure(api_key=api_key)
     return genai.GenerativeModel(
-        model_name="gemini-1.5-flash",      # gratuito: 1.500 req/día
+        model_name="gemini-2.0-flash",      # gratuito: 1.500 req/día
         generation_config={
             "temperature":       0.3,        # respuestas técnicas y consistentes
             "max_output_tokens": 900,
