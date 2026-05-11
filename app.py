@@ -492,8 +492,12 @@ def ia_responde_gemini(pregunta: str, historial: list,
         "models/gemini-2.0-flash-lite",
         "models/gemini-1.5-flash-latest",
     ]
-    SYSTEM = model._system_instruction if hasattr(model, "_system_instruction") else ""
     GEN_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
+    SYSTEM_TEXT = (
+        "Eres AIQC, experto en Control de Calidad de Laboratorio Clínico. "
+        "Respondes en español con rigor técnico. Usas Markdown. "
+        "Z-Score: Z = (x − μ) / σ con valores reales."
+    )
 
     last_error = ""
     for model_name in MODELS_FALLBACK:
@@ -501,11 +505,7 @@ def ia_responde_gemini(pregunta: str, historial: list,
             m = genai.GenerativeModel(
                 model_name=model_name,
                 generation_config=GEN_CFG,
-                system_instruction=(
-                    "Eres AIQC, experto en Control de Calidad de Laboratorio Clínico. "
-                    "Respondes en español con rigor técnico. Usas Markdown. "
-                    "Z-Score: Z = (x − μ) / σ con valores reales."
-                ),
+                system_instruction=SYSTEM_TEXT,
             )
             chat     = m.start_chat(history=gemini_hist)
             response = chat.send_message(contexto)
@@ -516,7 +516,6 @@ def ia_responde_gemini(pregunta: str, historial: list,
             last_error = str(e)
             if "api_key" in err or "403" in err:
                 return "❌ API Key inválida. Verifica que la copiaste correctamente en Secrets."
-            # Si es quota/límite o modelo no encontrado, probar el siguiente
             continue
 
     return (
