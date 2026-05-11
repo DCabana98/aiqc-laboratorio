@@ -1,6 +1,6 @@
 # ==============================================================
 #  AIQC – Artificial Intelligence for Quality Control
-#  Versión: 4.1 FINAL – High-Clarity Light Mode + Google Gemini
+#  Versión: 4.2 FINAL – High-Clarity Light Mode + Google Gemini
 #  Deploy:  streamlit run app.py
 #  Deps:    pip install streamlit plotly pandas numpy fpdf2 openpyxl google-generativeai
 # ==============================================================
@@ -107,33 +107,27 @@ html, body,
     padding: 48px 44px; max-width: 420px; margin: 60px auto 0 auto;
     box-shadow: 0 8px 32px rgba(0,0,0,.10);
 }
-
 .sec-head {
     font-size: 1rem; font-weight: 700; color: #0066CC;
     border-left: 3px solid #0066CC; padding-left: 10px; margin: 24px 0 14px 0;
 }
-
 .sb-logo  { text-align:center; font-size:2.6rem; margin-bottom:2px; }
 .sb-title { text-align:center; font-size:1.1rem; font-weight:800; color:#0066CC; margin-bottom:4px; }
 .sb-sub   { text-align:center; font-size:.78rem; color:#6C757D; margin-bottom:16px; }
-
 .data-pill {
     background:#EBF3FF; border:1px solid #B3D1F5; border-radius:8px;
     padding:10px 14px; font-size:.82rem; color:#004A99; margin-top:6px;
 }
-
 .gemini-banner {
     background: #EBF3FF; border: 1px solid #B3D1F5; border-radius: 10px;
     padding: 10px 16px; font-size: 12.5px; color: #004A99; margin-bottom: 14px;
 }
-
 table { width:100%; border-collapse:collapse; font-size:.87rem; }
 thead tr { background:#F8F9FA; }
 th { padding:10px 12px; text-align:left; font-weight:600;
      color:#495057; border-bottom:2px solid #DEE2E6; }
 td { padding:9px 12px; border-bottom:1px solid #F1F3F5; color:#212529; }
 tr:hover td { background:#F8F9FA; }
-
 [data-testid="stChatMessage"] {
     background:#F8F9FA !important; border:1px solid #E9ECEF !important;
     border-radius:12px !important;
@@ -147,59 +141,64 @@ tr:hover td { background:#F8F9FA; }
 
 
 # ==============================================================
-#  1. GOOGLE GEMINI – INICIALIZACIÓN
+#  1. GOOGLE GEMINI – INICIALIZACIÓN CON ROTACIÓN DE MODELOS
 # ==============================================================
-def init_gemini():
-    """
-    Inicializa Gemini con rotación automática de modelos gratuitos.
-    Orden de prioridad:
-      1. gemini-2.0-flash       → 1.500 req/día
-      2. gemini-1.5-flash-8b    → 1.500 req/día
-      3. gemini-1.5-pro         →    50 req/día
-    Total combinado: ~3.050 consultas/día gratuitas.
-    """
-    api_key = (
+# Nombres correctos para la API v1beta de Google (2025)
+GEMINI_MODELS = [
+    "models/gemini-2.0-flash",
+    "models/gemini-2.0-flash-lite",
+    "models/gemini-1.5-flash-latest",
+]
+
+GEMINI_SYSTEM = (
+    "Eres AIQC, un experto en Control de Calidad de Laboratorio Clínico "
+    "con 20 años de experiencia en ISO 15189 y CLIA. "
+    "Respondes siempre en español con rigor técnico y clínico. "
+    "Usas Markdown (negritas, listas, tablas) para mayor claridad. "
+    "Cuando mencionas Z-Scores siempre muestras la fórmula: Z = (x − μ) / σ "
+    "con los valores reales del dato analizado."
+)
+
+GEMINI_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
+
+
+def get_api_key() -> str:
+    return (
         st.secrets.get("gemini", {}).get("api_key") or
         st.secrets.get("GEMINI_API_KEY", "") or
         os.environ.get("GEMINI_API_KEY", "")
     )
+
+
+def init_gemini():
+    """
+    Intenta inicializar Gemini probando cada modelo en orden.
+    Devuelve el primer modelo disponible o None si ninguno responde.
+    Modelos (todos gratuitos):
+      1. models/gemini-2.0-flash       → 1.500 req/día
+      2. models/gemini-2.0-flash-lite  → 1.500 req/día
+      3. models/gemini-1.5-flash-latest→ 1.500 req/día
+    Total: ~4.500 consultas/día gratuitas.
+    """
+    api_key = get_api_key()
     if not api_key:
         return None
 
     genai.configure(api_key=api_key)
 
-    SYSTEM = (
-        "Eres AIQC, un experto en Control de Calidad de Laboratorio Clínico "
-        "con 20 años de experiencia en ISO 15189 y CLIA. "
-        "Respondes siempre en español con rigor técnico y clínico. "
-        "Usas Markdown (negritas, listas, tablas) para mayor claridad. "
-        "Cuando mencionas Z-Scores siempre muestras la fórmula: Z = (x − μ) / σ "
-        "con los valores reales del dato analizado."
-    )
-    GEN_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
-
-    # Modelos en orden de prioridad (todos gratuitos, nombres API v1beta 2025)
-    MODELS = [
-        "models/gemini-2.0-flash",
-        "models/gemini-2.0-flash-lite",
-        "models/gemini-1.5-flash-latest",
-    ]
-
-    # Intentar cada modelo hasta encontrar uno disponible
-    for model_name in MODELS:
+    for model_name in GEMINI_MODELS:
         try:
             model = genai.GenerativeModel(
                 model_name=model_name,
-                generation_config=GEN_CFG,
-                system_instruction=SYSTEM,
+                generation_config=GEMINI_CFG,
+                system_instruction=GEMINI_SYSTEM,
             )
-            # Guardamos qué modelo se usó para mostrarlo en la UI
             st.session_state["gemini_model_active"] = model_name
             return model
         except Exception:
-            continue  # ese modelo no está disponible, probar el siguiente
+            continue
 
-    return None  # ningún modelo disponible
+    return None
 
 
 # ==============================================================
@@ -213,7 +212,7 @@ def render_login():
         <div style="font-size:3rem;text-align:center">🔬</div>
         <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#0066CC">AIQC</div>
         <div style="text-align:center;font-size:.86rem;color:#6C757D;margin-bottom:28px">
-            Artificial Intelligence for Quality Control · v4.1
+            Artificial Intelligence for Quality Control · v4.2
         </div>
     </div>""", unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 1.8, 1])
@@ -435,23 +434,28 @@ def generar_pdf(df_all: pd.DataFrame, analitos: list, fuente: str) -> bytes:
     pdf.ln(4)
     pdf.set_draw_color(222,226,230); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(2)
     pdf.set_font("Helvetica","I",8); pdf.set_text_color(108,117,125)
-    pdf.cell(0,5,"AIQC v4.1 · Informe automatico · Uso interno del laboratorio",ln=True,align="C")
+    pdf.cell(0,5,"AIQC v4.2 · Informe automatico · Uso interno del laboratorio",ln=True,align="C")
     return bytes(pdf.output())
 
 
 # ==============================================================
-#  7. ASISTENTE IA – GOOGLE GEMINI (GRATUITO)
+#  7. ASISTENTE IA – GOOGLE GEMINI CON ROTACIÓN AUTOMÁTICA
 # ==============================================================
 def ia_responde_gemini(pregunta: str, historial: list,
                        df_all, analitos_ls, f_min, f_max) -> str:
-    """Llama a Gemini Flash con el contexto real del laboratorio."""
-    model = init_gemini()
-    if model is None:
+    """
+    Llama a Gemini con rotación automática de modelos.
+    Si un modelo falla (quota o 404), prueba el siguiente de la lista.
+    """
+    api_key = get_api_key()
+    if not api_key:
         return (
             "❌ **API Key de Gemini no configurada.**\n\n"
             "Ve a Streamlit Cloud → tu app → **Settings → Secrets** y añade:\n"
             "```toml\n[gemini]\napi_key = \"AIzaSy...\"\n```"
         )
+
+    genai.configure(api_key=api_key)
 
     # Contexto del laboratorio
     resumen = []
@@ -487,41 +491,32 @@ def ia_responde_gemini(pregunta: str, historial: list,
         role = "user" if msg["role"] == "user" else "model"
         gemini_hist.append({"role": role, "parts": [msg["content"]]})
 
-    MODELS_FALLBACK = [
-        "models/gemini-2.0-flash",
-        "models/gemini-2.0-flash-lite",
-        "models/gemini-1.5-flash-latest",
-    ]
-    GEN_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
-    SYSTEM_TEXT = (
-        "Eres AIQC, experto en Control de Calidad de Laboratorio Clínico. "
-        "Respondes en español con rigor técnico. Usas Markdown. "
-        "Z-Score: Z = (x − μ) / σ con valores reales."
-    )
-
+    # ── Rotación automática de modelos ───────────────────────
     last_error = ""
-    for model_name in MODELS_FALLBACK:
+    for model_name in GEMINI_MODELS:
         try:
             m = genai.GenerativeModel(
                 model_name=model_name,
-                generation_config=GEN_CFG,
-                system_instruction=SYSTEM_TEXT,
+                generation_config=GEMINI_CFG,
+                system_instruction=GEMINI_SYSTEM,
             )
             chat     = m.start_chat(history=gemini_hist)
             response = chat.send_message(contexto)
             st.session_state["gemini_model_active"] = model_name
             return response.text
         except Exception as e:
-            err = str(e).lower()
             last_error = str(e)
+            err = last_error.lower()
+            # Error de autenticación → no tiene sentido seguir probando
             if "api_key" in err or "403" in err:
                 return "❌ API Key inválida. Verifica que la copiaste correctamente en Secrets."
+            # 404 o quota → probar siguiente modelo
             continue
 
     return (
         "⚠️ **Todos los modelos gratuitos han alcanzado su límite diario.**\n\n"
-        "Los límites se reinician automáticamente a medianoche (hora del servidor).\n\n"
-        f"_Último error: {last_error}_"
+        "Los límites se reinician automáticamente a medianoche.\n\n"
+        f"_Último error técnico: {last_error}_"
     )
 
 
@@ -531,7 +526,7 @@ def ia_responde_gemini(pregunta: str, historial: list,
 with st.sidebar:
     st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sb-sub">Quality Control · v4.1</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sub">Quality Control · v4.2</div>', unsafe_allow_html=True)
     st.markdown("---")
 
     st.markdown("**📂 Fuente de datos**")
@@ -646,7 +641,6 @@ with tab_dash:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Gráfico Levey-Jennings
         m, sd = ultima["Media_Objetivo"], ultima["SD_Objetivo"]
         fig = go.Figure()
 
@@ -713,7 +707,7 @@ with tab_dash:
 with tab_chat:
     st.markdown("### 🤖 Asistente AIQC — Powered by Google Gemini")
 
-    modelo_activo = st.session_state.get("gemini_model_active", "gemini-2.0-flash")
+    modelo_activo = st.session_state.get("gemini_model_active", "models/gemini-2.0-flash")
     st.markdown(
         f'<div class="gemini-banner">🟢 <b>Google Gemini activo</b> · '
         f'Modelo: <code>{modelo_activo}</code> · '
@@ -723,8 +717,8 @@ with tab_chat:
     if "messages" not in st.session_state:
         st.session_state["messages"] = [{"role":"assistant","content":(
             "¡Hola! Soy el **Asistente AIQC**, impulsado por **Google Gemini**. "
-            "Tengo acceso a los datos actuales de tu laboratorio y puedo razonar "
-            "clínicamente sobre ellos.\n\nPrueba a preguntarme:\n"
+            "Tengo acceso a los datos actuales de tu laboratorio.\n\n"
+            "Prueba a preguntarme:\n"
             "- *¿Cómo está el ALT?*\n"
             "- *¿Hay violaciones de Westgard activas?*\n"
             "- *Dame un plan de acción correctivo*\n"
