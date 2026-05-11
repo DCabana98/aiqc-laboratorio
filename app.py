@@ -150,7 +150,14 @@ tr:hover td { background:#F8F9FA; }
 #  1. GOOGLE GEMINI – INICIALIZACIÓN
 # ==============================================================
 def init_gemini():
-    """Inicializa el cliente de Gemini Flash (capa gratuita)."""
+    """
+    Inicializa Gemini con rotación automática de modelos gratuitos.
+    Orden de prioridad:
+      1. gemini-2.0-flash       → 1.500 req/día
+      2. gemini-1.5-flash-8b    → 1.500 req/día
+      3. gemini-1.5-pro         →    50 req/día
+    Total combinado: ~3.050 consultas/día gratuitas.
+    """
     api_key = (
         st.secrets.get("gemini", {}).get("api_key") or
         st.secrets.get("GEMINI_API_KEY", "") or
@@ -158,23 +165,41 @@ def init_gemini():
     )
     if not api_key:
         return None
+
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel(
-        model_name="gemini-2.0-flash",      # gratuito: 1.500 req/día
-        generation_config={
-            "temperature":       0.3,        # respuestas técnicas y consistentes
-            "max_output_tokens": 900,
-            "top_p":             0.85,
-        },
-        system_instruction=(
-            "Eres AIQC, un experto en Control de Calidad de Laboratorio Clínico "
-            "con 20 años de experiencia en ISO 15189 y CLIA. "
-            "Respondes siempre en español con rigor técnico y clínico. "
-            "Usas Markdown (negritas, listas, tablas) para mayor claridad. "
-            "Cuando mencionas Z-Scores siempre muestras la fórmula: Z = (x − μ) / σ "
-            "con los valores reales del dato analizado."
-        ),
+
+    SYSTEM = (
+        "Eres AIQC, un experto en Control de Calidad de Laboratorio Clínico "
+        "con 20 años de experiencia en ISO 15189 y CLIA. "
+        "Respondes siempre en español con rigor técnico y clínico. "
+        "Usas Markdown (negritas, listas, tablas) para mayor claridad. "
+        "Cuando mencionas Z-Scores siempre muestras la fórmula: Z = (x − μ) / σ "
+        "con los valores reales del dato analizado."
     )
+    GEN_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
+
+    # Modelos en orden de prioridad (todos gratuitos)
+    MODELS = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
+    ]
+
+    # Intentar cada modelo hasta encontrar uno disponible
+    for model_name in MODELS:
+        try:
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config=GEN_CFG,
+                system_instruction=SYSTEM,
+            )
+            # Guardamos qué modelo se usó para mostrarlo en la UI
+            st.session_state["gemini_model_active"] = model_name
+            return model
+        except Exception:
+            continue  # ese modelo no está disponible, probar el siguiente
+
+    return None  # ningún modelo disponible
 
 
 # ==============================================================
@@ -462,18 +487,43 @@ def ia_responde_gemini(pregunta: str, historial: list,
         role = "user" if msg["role"] == "user" else "model"
         gemini_hist.append({"role": role, "parts": [msg["content"]]})
 
-    try:
-        chat     = model.start_chat(history=gemini_hist)
-        response = chat.send_message(contexto)
-        return response.text
-    except Exception as e:
-        err = str(e).lower()
-        if "quota" in err or "429" in err:
-            return ("⚠️ **Límite diario alcanzado** (1.500 req/día en capa gratuita).\n\n"
-                    "Espera hasta mañana o activa la capa de pago en Google AI Studio.")
-        if "api_key" in err or "403" in err:
-            return "❌ API Key inválida. Verifica que la copiaste correctamente en Secrets."
-        return f"❌ Error al contactar con Gemini: {e}"
+    MODELS_FALLBACK = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
+    ]
+    SYSTEM = model._system_instruction if hasattr(model, "_system_instruction") else ""
+    GEN_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
+
+    last_error = ""
+    for model_name in MODELS_FALLBACK:
+        try:
+            m = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config=GEN_CFG,
+                system_instruction=(
+                    "Eres AIQC, experto en Control de Calidad de Laboratorio Clínico. "
+                    "Respondes en español con rigor técnico. Usas Markdown. "
+                    "Z-Score: Z = (x − μ) / σ con valores reales."
+                ),
+            )
+            chat     = m.start_chat(history=gemini_hist)
+            response = chat.send_message(contexto)
+            st.session_state["gemini_model_active"] = model_name
+            return response.text
+        except Exception as e:
+            err = str(e).lower()
+            last_error = str(e)
+            if "api_key" in err or "403" in err:
+                return "❌ API Key inválida. Verifica que la copiaste correctamente en Secrets."
+            # Si es quota/límite o modelo no encontrado, probar el siguiente
+            continue
+
+    return (
+        "⚠️ **Todos los modelos gratuitos han alcanzado su límite diario.**\n\n"
+        "Los límites se reinician automáticamente a medianoche (hora del servidor).\n\n"
+        f"_Último error: {last_error}_"
+    )
 
 
 # ==============================================================
@@ -664,10 +714,11 @@ with tab_dash:
 with tab_chat:
     st.markdown("### 🤖 Asistente AIQC — Powered by Google Gemini")
 
+    modelo_activo = st.session_state.get("gemini_model_active", "gemini-2.0-flash")
     st.markdown(
-        '<div class="gemini-banner">🟢 <b>Google Gemini Flash activo</b> · '
-        'Gratuito · 1.500 consultas/día · El asistente analiza los datos '
-        'reales del laboratorio con IA.</div>',
+        f'<div class="gemini-banner">🟢 <b>Google Gemini activo</b> · '
+        f'Modelo: <code>{modelo_activo}</code> · '
+        f'Gratuito · Rotación automática entre 3 modelos si se alcanza el límite.</div>',
         unsafe_allow_html=True)
 
     if "messages" not in st.session_state:
