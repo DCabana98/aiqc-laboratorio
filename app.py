@@ -178,11 +178,11 @@ def init_gemini():
     )
     GEN_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
 
-    # Modelos en orden de prioridad (todos gratuitos)
+    # Modelos en orden de prioridad (todos gratuitos, nombres API v1beta 2025)
     MODELS = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash-8b",
-        "gemini-1.5-pro",
+        "models/gemini-2.0-flash",
+        "models/gemini-2.0-flash-lite",
+        "models/gemini-1.5-flash-latest",
     ]
 
     # Intentar cada modelo hasta encontrar uno disponible
@@ -488,9 +488,9 @@ def ia_responde_gemini(pregunta: str, historial: list,
         gemini_hist.append({"role": role, "parts": [msg["content"]]})
 
     MODELS_FALLBACK = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash-8b",
-        "gemini-1.5-pro",
+        "models/gemini-2.0-flash",
+        "models/gemini-2.0-flash-lite",
+        "models/gemini-1.5-flash-latest",
     ]
     SYSTEM = model._system_instruction if hasattr(model, "_system_instruction") else ""
     GEN_CFG = {"temperature": 0.3, "max_output_tokens": 900, "top_p": 0.85}
