@@ -1,6 +1,6 @@
 # ==============================================================
 #  AIQC – Artificial Intelligence for Quality Control
-#  Versión: 4.4 FINAL – Light Mode + Gemini + Sigma Metrics
+#  Versión: 4.5 – Mejoras: secrets, 10_x Westgard, caché demo
 #  Deploy:  streamlit run app.py
 #  Deps:    pip install streamlit plotly pandas numpy fpdf2 openpyxl google-generativeai
 # ==============================================================
@@ -128,9 +128,36 @@ def init_gemini():
 
 
 # ==============================================================
-#  2. AUTENTICACIÓN
+#  2. AUTENTICACIÓN — MEJORA 1: credenciales en st.secrets
 # ==============================================================
-VALID_USER, VALID_PASS = "admin", "qc2026"
+def get_credentials() -> tuple[str, str]:
+    """
+    Lee usuario y contraseña desde st.secrets.
+    Si no están configurados muestra un error claro con instrucciones.
+
+    Crea .streamlit/secrets.toml con:
+        [auth]
+        user     = "admin"
+        password = "qc2026"
+
+    En Streamlit Cloud: Settings → Secrets → pega el contenido.
+    Añade .streamlit/secrets.toml a tu .gitignore.
+    """
+    try:
+        user = st.secrets["auth"]["user"]
+        pwd  = st.secrets["auth"]["password"]
+    except KeyError:
+        st.error(
+            "⚠️ **Credenciales no configuradas.** "
+            "Crea `.streamlit/secrets.toml` con:\n\n"
+            "```toml\n[auth]\nuser = \"admin\"\npassword = \"qc2026\"\n```\n\n"
+            "En Streamlit Cloud: Settings → Secrets."
+        )
+        st.stop()
+    return user, pwd
+
+VALID_USER, VALID_PASS = get_credentials()
+
 
 def render_login():
     st.markdown("""
@@ -138,7 +165,7 @@ def render_login():
         <div style="font-size:3rem;text-align:center">🔬</div>
         <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#0066CC">AIQC</div>
         <div style="text-align:center;font-size:.86rem;color:#6C757D;margin-bottom:28px">
-            Artificial Intelligence for Quality Control · v4.4
+            Artificial Intelligence for Quality Control · v4.5
         </div>
     </div>""", unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 1.8, 1])
@@ -158,12 +185,20 @@ if not st.session_state.get("auth"):
 
 
 # ==============================================================
-#  3. DATOS DEMO
+#  3. DATOS DEMO — MEJORA 3: caché con fecha como parámetro
 # ==============================================================
 @st.cache_data(show_spinner=False)
-def build_demo() -> pd.DataFrame:
+def build_demo(ref_date: str = "") -> pd.DataFrame:
+    """
+    Genera datos de demostración con fechas relativas a ref_date.
+    El parámetro actúa como cache-key diario: Streamlit invalida
+    el caché automáticamente cada nueva jornada.
+
+    Args:
+        ref_date: fecha en formato 'YYYY-MM-DD'.
+    """
     np.random.seed(2026)
-    today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = pd.Timestamp(ref_date).replace(hour=0, minute=0, second=0, microsecond=0)
     dates = [today - timedelta(days=29 - i) for i in range(30)]
     rows  = []
     for i, d in enumerate(dates):
@@ -226,27 +261,69 @@ def leer_archivo(uploaded):
 
 
 # ==============================================================
-#  5. WESTGARD
+#  5. WESTGARD — MEJORA 2: regla 10_x añadida
 # ==============================================================
+REGLAS_DESC = (
+    "1_3s: ±3SD → Rojo | "
+    "2_2s: 2 consec ±2SD → Rojo | "
+    "4_1s: 4 consec ±1SD → Ámbar | "
+    "10_x: 10 consec mismo lado → Ámbar"
+)
+
 def evaluar_westgard(serie):
     df = serie.copy().sort_values("Fecha").reset_index(drop=True)
-    df["Z_Score"] = (df["Valor"] - df["Media_Objetivo"]) / df["SD_Objetivo"]
-    df["Regla_Violada"] = "—"; df["Score_Riesgo"] = 0; df["Estado"] = "Verde"
+    df["Z_Score"]       = (df["Valor"] - df["Media_Objetivo"]) / df["SD_Objetivo"]
+    df["Regla_Violada"] = "—"
+    df["Score_Riesgo"]  = 0
+    df["Estado"]        = "Verde"
+
     for i in range(len(df)):
         z = df.at[i, "Z_Score"]
+
+        # 1_3s: un punto ≥ ±3 SD → Rojo
         if abs(z) >= 3.0:
-            df.at[i, "Regla_Violada"] = "1_3s"; df.at[i, "Score_Riesgo"] = 90; df.at[i, "Estado"] = "Rojo"; continue
+            df.at[i, "Regla_Violada"] = "1_3s"
+            df.at[i, "Score_Riesgo"]  = 90
+            df.at[i, "Estado"]        = "Rojo"
+            continue
+
+        # 2_2s: dos consecutivos ≥ ±2 SD mismo lado → Rojo
         if i >= 1:
-            zp = df.at[i-1, "Z_Score"]
+            zp = df.at[i - 1, "Z_Score"]
             if abs(z) >= 2.0 and abs(zp) >= 2.0 and np.sign(z) == np.sign(zp):
-                df.at[i, "Regla_Violada"] = "2_2s"; df.at[i, "Score_Riesgo"] = 75; df.at[i, "Estado"] = "Rojo"; continue
+                df.at[i, "Regla_Violada"] = "2_2s"
+                df.at[i, "Score_Riesgo"]  = 75
+                df.at[i, "Estado"]        = "Rojo"
+                continue
+
+        # 4_1s: cuatro consecutivos ≥ ±1 SD mismo lado → Ámbar
         if i >= 3:
-            w = df.loc[i-3:i, "Z_Score"].values
-            if all(abs(x) >= 1.0 for x in w) and len(set(np.sign(w))) == 1:
-                df.at[i, "Regla_Violada"] = "4_1s"; df.at[i, "Score_Riesgo"] = 60; df.at[i, "Estado"] = "Ámbar"; continue
+            w4 = df.loc[i - 3:i, "Z_Score"].values
+            if all(abs(x) >= 1.0 for x in w4) and len(set(np.sign(w4))) == 1:
+                df.at[i, "Regla_Violada"] = "4_1s"
+                df.at[i, "Score_Riesgo"]  = 60
+                df.at[i, "Estado"]        = "Ámbar"
+                continue
+
+        # 10_x: diez consecutivos al mismo lado (Z cualquiera) → Ámbar
+        if i >= 9:
+            w10    = df.loc[i - 9:i, "Z_Score"].values
+            signos = set(np.sign(w10))
+            if len(signos) == 1 and 0.0 not in signos:
+                df.at[i, "Regla_Violada"] = "10_x"
+                df.at[i, "Score_Riesgo"]  = 55
+                df.at[i, "Estado"]        = "Ámbar"
+                continue
+
+        # 1_2s: un punto ≥ ±2 SD → Ámbar (advertencia)
         if abs(z) >= 2.0:
-            df.at[i, "Regla_Violada"] = "1_2s (warn)"; df.at[i, "Score_Riesgo"] = 45; df.at[i, "Estado"] = "Ámbar"; continue
+            df.at[i, "Regla_Violada"] = "1_2s (warn)"
+            df.at[i, "Score_Riesgo"]  = 45
+            df.at[i, "Estado"]        = "Ámbar"
+            continue
+
         df.at[i, "Score_Riesgo"] = max(0, int(abs(z) * 18))
+
     return df
 
 def estado_badge(e):
@@ -258,8 +335,6 @@ def estado_badge(e):
 # ==============================================================
 #  6. SIGMA METRICS
 # ==============================================================
-# TEa estándar CLIA (Error Total Aceptable) por analito
-# Formato: "nombre_clave": (TEa_porcentaje, unidad, descripcion)
 TEA_CLIA = {
     "Potasio (K+)":       (8.0,  "mmol/L", "CLIA ±0.5 mmol/L → ~8% a nivel normal"),
     "ALT (Transaminasa)": (20.0, "U/L",    "CLIA ±20%"),
@@ -270,27 +345,20 @@ TEA_CLIA = {
     "Hemoglobina":        (7.0,  "g/dL",   "CLIA ±7%"),
     "Calcio":             (8.0,  "mg/dL",  "CLIA ±8%"),
 }
-TEA_DEFAULT = 15.0  # % para analitos no listados
+TEA_DEFAULT = 15.0
 
 def calcular_sigma(df_analito: pd.DataFrame, tea_pct: float) -> dict:
-    """
-    Calcula Sigma Metrics para un analito.
-    Sigma = (TEa% - |Sesgo%|) / CV%
-    """
     if df_analito.empty: return {}
     media  = df_analito["Media_Objetivo"].iloc[0]
     sd     = df_analito["SD_Objetivo"].iloc[0]
     vals   = df_analito["Valor"]
-
     cv_pct    = (sd / media) * 100 if media != 0 else 0
     sesgo_pct = abs((vals.mean() - media) / media) * 100 if media != 0 else 0
     sigma     = (tea_pct - sesgo_pct) / cv_pct if cv_pct > 0 else 0
-
     if sigma >= 6:   categoria = "🏆 Clase Mundial";  color = "#198754"
     elif sigma >= 4: categoria = "✅ Buena calidad";  color = "#0066CC"
     elif sigma >= 3: categoria = "⚠️ Aceptable";      color = "#FD7E14"
     else:            categoria = "🔴 Revisar método"; color = "#DC3545"
-
     return {
         "sigma":     round(sigma, 2),
         "cv_pct":    round(cv_pct, 2),
@@ -339,6 +407,9 @@ def generar_pdf(df_all, analitos, fuente):
     pdf.ln(4)
 
     sec("2. Estado por Analito  [Z = (x - media) / SD]")
+    pdf.set_font("Helvetica","",8); pdf.set_text_color(80,80,80)
+    pdf.cell(0, 5, REGLAS_DESC, ln=True)
+    pdf.ln(2)
     col_w=[55,28,24,24,30,25]; hdrs=["Analito","Valor","Z-Score","Score","Regla","Estado"]
     pdf.set_fill_color(240,242,245); pdf.set_text_color(73,80,87); pdf.set_font("Helvetica","B",9)
     for w,h in zip(col_w,hdrs): pdf.cell(w,8,h,border=1,fill=True)
@@ -355,7 +426,6 @@ def generar_pdf(df_all, analitos, fuente):
         pdf.ln()
     pdf.ln(5)
 
-    # Sigma Metrics en PDF
     sec("3. Sigma Metrics (CLIA)")
     sw=[55,22,22,22,22,45]; sh=["Analito","TEa%","CV%","Sesgo%","Sigma","Categoría"]
     pdf.set_fill_color(240,242,245); pdf.set_text_color(73,80,87); pdf.set_font("Helvetica","B",9)
@@ -417,13 +487,15 @@ def generar_pdf(df_all, analitos, fuente):
     pdf.ln(4)
     pdf.set_draw_color(222,226,230); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(2)
     pdf.set_font("Helvetica","I",8); pdf.set_text_color(108,117,125)
-    pdf.cell(0,5,"AIQC v4.4 · Informe automatico · Uso interno del laboratorio",ln=True,align="C")
+    pdf.cell(0,5,"AIQC v4.5 · Informe automatico · Uso interno del laboratorio",ln=True,align="C")
     return bytes(pdf.output())
 
 
 # ==============================================================
-#  8. ASISTENTE IA GEMINI
+#  8. ASISTENTE IA GEMINI — límite de historial (MAX_TURNS)
 # ==============================================================
+MAX_TURNS = 10  # máximo de turnos enviados a Gemini para controlar tokens
+
 def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
     api_key = get_api_key()
     if not api_key:
@@ -456,7 +528,8 @@ def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
         f"INSTRUCCIÓN CRÍTICA: USA ESTOS DATOS EXACTOS. No respondas de forma genérica.\n\n"
         f"{chr(10).join(resumen)}\n\n"
         f"=== REGLAS WESTGARD ===\n"
-        f"1_3s: ±3SD → Rojo | 2_2s: 2 consec ±2SD → Rojo | 4_1s: 4 consec ±1SD → Ámbar\n\n"
+        f"1_3s: ±3SD → Rojo | 2_2s: 2 consec ±2SD → Rojo | "
+        f"4_1s: 4 consec ±1SD → Ámbar | 10_x: 10 consec mismo lado → Ámbar\n\n"
         f"=== SIGMA METRICS ===\n"
         f"≥6σ: Clase Mundial | ≥4σ: Buena calidad | ≥3σ: Aceptable | <3σ: Revisar método\n"
         f"Fórmula: Sigma = (TEa% - Sesgo%) / CV%\n\n"
@@ -464,8 +537,10 @@ def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
         f"RECUERDA: Cita siempre el analito, valor, Z-Score, Sigma y regla violada."
     )
 
+    # Ventana deslizante: solo los últimos MAX_TURNS turnos
+    recent = historial[1:][-MAX_TURNS * 2:]
     gemini_hist = []
-    for msg in historial[1:]:
+    for msg in recent:
         role = "user" if msg["role"] == "user" else "model"
         gemini_hist.append({"role": role, "parts": [msg["content"]]})
 
@@ -495,7 +570,7 @@ def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
 with st.sidebar:
     st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sb-sub">Quality Control · v4.4</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sub">Quality Control · v4.5</div>', unsafe_allow_html=True)
     st.markdown("---")
 
     st.markdown("**📂 Fuente de datos**")
@@ -510,9 +585,14 @@ with st.sidebar:
                         f'{len(df_all)} filas · {df_all["Analito"].nunique()} analito(s)</div>',
                         unsafe_allow_html=True)
         else:
-            st.error(err); df_all = build_demo(); data_src = "Demo (inválido)"
+            st.error(err)
+            _hoy   = datetime.today().strftime("%Y-%m-%d")
+            df_all = build_demo(_hoy)
+            data_src = "Demo (inválido)"
     else:
-        df_all = build_demo(); data_src = "🔬 Modo Demo"
+        _hoy   = datetime.today().strftime("%Y-%m-%d")
+        df_all = build_demo(_hoy)
+        data_src = "🔬 Modo Demo"
         st.caption("Usando datos simulados de demostración.")
 
     st.markdown("---")
@@ -663,7 +743,6 @@ with tab_sigma:
         "TEa según criterios CLIA. Edita los valores en la tabla lateral si tienes TEa propios."
     )
 
-    # — TEa editables por el usuario —
     with st.expander("⚙️ Editar límites TEa (Error Total Aceptable) por analito", expanded=False):
         st.caption("Puedes personalizar el TEa% para cada analito. Por defecto se usan criterios CLIA.")
         tea_editado = {}
@@ -679,7 +758,6 @@ with tab_sigma:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # — Calcular Sigma para todos los analitos —
     sigma_data = []
     for an in analitos_ls:
         sub = df_all[
@@ -695,7 +773,6 @@ with tab_sigma:
     if not sigma_data:
         st.warning("Sin datos suficientes para calcular Sigma Metrics.")
     else:
-        # — KPIs de Sigma —
         st.markdown('<div class="sec-head">Resumen por analito</div>', unsafe_allow_html=True)
         cols_s = st.columns(len(sigma_data))
         for col, d in zip(cols_s, sigma_data):
@@ -709,25 +786,18 @@ with tab_sigma:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # — Gráfico de barras Sigma —
         fig_s = go.Figure()
-
-        # Zonas de calidad de fondo
         max_x = len(sigma_data) + 0.5
         fig_s.add_hrect(y0=6,  y1=10,  fillcolor="rgba(25,135,84,.08)",  line_width=0)
         fig_s.add_hrect(y0=4,  y1=6,   fillcolor="rgba(0,102,204,.07)",  line_width=0)
         fig_s.add_hrect(y0=3,  y1=4,   fillcolor="rgba(253,126,20,.07)", line_width=0)
         fig_s.add_hrect(y0=0,  y1=3,   fillcolor="rgba(220,53,69,.07)",  line_width=0)
-
-        # Líneas de referencia
         for y_v, color, lbl in [(6,"#198754","6σ Clase Mundial"),
                                   (4,"#0066CC","4σ Buena"),
                                   (3,"#FD7E14","3σ Mínimo")]:
             fig_s.add_hline(y=y_v, line_color=color, line_width=1.5, line_dash="dash",
                             annotation_text=lbl, annotation_position="right",
                             annotation_font=dict(color=color, size=11))
-
-        # Barras
         fig_s.add_trace(go.Bar(
             x=[d["analito"].split("(")[0].strip() for d in sigma_data],
             y=[d["sigma"] for d in sigma_data],
@@ -736,13 +806,8 @@ with tab_sigma:
             text=[f"{d['sigma']}σ" for d in sigma_data],
             textposition="outside",
             textfont=dict(size=14, color=[d["color"] for d in sigma_data], family="Inter"),
-            hovertemplate=(
-                "<b>%{x}</b><br>"
-                "Sigma: <b>%{y}σ</b><br>"
-                "<extra></extra>"
-            ),
+            hovertemplate="<b>%{x}</b><br>Sigma: <b>%{y}σ</b><br><extra></extra>",
         ))
-
         fig_s.update_layout(
             template="plotly_white",
             title=dict(text="Sigma Metrics por Analito — Criterios CLIA",
@@ -755,7 +820,6 @@ with tab_sigma:
         )
         st.plotly_chart(fig_s, use_container_width=True)
 
-        # — Tabla detallada —
         st.markdown('<div class="sec-head">Detalle de cálculo</div>', unsafe_allow_html=True)
         tabla_sigma = []
         for d in sigma_data:
@@ -773,28 +837,25 @@ with tab_sigma:
         df_tabla = pd.DataFrame(tabla_sigma)
         st.write(df_tabla.to_html(escape=False, index=False), unsafe_allow_html=True)
 
-        # — Interpretación clínica —
         st.markdown('<div class="sec-head">Interpretación clínica</div>', unsafe_allow_html=True)
         for d in sigma_data:
-            s = d["sigma"]
-            an = d["analito"]
+            s = d["sigma"]; an = d["analito"]
             if s >= 6:
                 msg = (f"**{an}** alcanza **{s}σ** — rendimiento de clase mundial. "
                        f"Puede reducir la frecuencia de controles a 1 por turno.")
-                ic  = "success"
+                ic = "success"
             elif s >= 4:
                 msg = (f"**{an}** con **{s}σ** — buena calidad analítica. "
                        f"Las reglas de Westgard actuales son apropiadas.")
-                ic  = "info"
+                ic = "info"
             elif s >= 3:
                 msg = (f"**{an}** con **{s}σ** — rendimiento aceptable pero en el límite. "
                        f"Considera revisar el CV o el sesgo. Aumenta la frecuencia de controles.")
-                ic  = "warning"
+                ic = "warning"
             else:
                 msg = (f"**{an}** con **{s}σ** — rendimiento deficiente. "
                        f"Acción correctiva necesaria: revisar calibración, reactivos y método analítico.")
-                ic  = "error"
-
+                ic = "error"
             if   ic == "success": st.success(msg)
             elif ic == "info":    st.info(msg)
             elif ic == "warning": st.warning(msg)
@@ -808,16 +869,17 @@ with tab_chat:
     st.markdown(
         f'<div class="gemini-banner">🟢 <b>Google Gemini activo</b> · '
         f'Modelo: <code>{modelo_activo}</code> · Gratuito · '
-        f'Incluye análisis de Sigma Metrics en el contexto.</div>',
+        f'Incluye análisis de Sigma Metrics en el contexto · '
+        f'Historial limitado a {MAX_TURNS} turnos.</div>',
         unsafe_allow_html=True)
 
     if "messages" not in st.session_state:
         st.session_state["messages"] = [{"role":"assistant","content":(
-            "¡Hola! Soy el **Asistente AIQC v4.4**. Ahora también analizo los **Sigma Metrics** "
-            "de tus analitos junto con las reglas de Westgard.\n\n"
+            "¡Hola! Soy el **Asistente AIQC v4.5**. Analizo las reglas de Westgard "
+            "(incluyendo la nueva **10_x**) y los **Sigma Metrics** de tus analitos.\n\n"
             "Prueba a preguntarme:\n"
             "- *¿Cuál es el Sigma del ALT?*\n"
-            "- *¿Qué analito tiene peor calidad analítica?*\n"
+            "- *¿Hay alguna tendencia sostenida (regla 10_x)?*\n"
             "- *Dame un plan correctivo para el laboratorio*\n"
             "- *¿Hay violaciones de Westgard activas?*"
         )}]
