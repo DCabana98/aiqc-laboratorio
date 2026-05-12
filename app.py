@@ -1,6 +1,6 @@
 # ==============================================================
 #  AIQC – Artificial Intelligence for Quality Control
-#  Versión: 4.3 FINAL – High-Clarity Light Mode + Google Gemini
+#  Versión: 4.4 FINAL – Light Mode + Gemini + Sigma Metrics
 #  Deploy:  streamlit run app.py
 #  Deps:    pip install streamlit plotly pandas numpy fpdf2 openpyxl google-generativeai
 # ==============================================================
@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 from fpdf import FPDF
 import google.generativeai as genai
 
-# ── Configuración de página ────────────────────────────────
 st.set_page_config(
     page_title="AIQC – Quality Control",
     page_icon="🔬",
@@ -23,148 +22,85 @@ st.set_page_config(
 )
 
 # ==============================================================
-#  ESTILOS GLOBALES – HIGH-CLARITY LIGHT MODE
+#  ESTILOS GLOBALES
 # ==============================================================
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-html, body,
-[data-testid="stAppViewContainer"],
-[data-testid="stAppViewBlockContainer"] {
-    background-color: #FFFFFF !important;
-    color: #212529;
+html, body, [data-testid="stAppViewContainer"], [data-testid="stAppViewBlockContainer"] {
+    background-color: #FFFFFF !important; color: #212529;
     font-family: 'Inter', 'Segoe UI', sans-serif;
 }
-#MainMenu, footer, header,
-[data-testid="stToolbar"],
-[data-testid="stDecoration"] { display: none !important; }
-
-[data-testid="stSidebar"] {
-    background-color: #F8F9FA !important;
-    border-right: 1px solid #DEE2E6;
-}
+#MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
+[data-testid="stSidebar"] { background-color: #F8F9FA !important; border-right: 1px solid #DEE2E6; }
 [data-testid="stSidebar"] * { color: #212529 !important; }
-
-[data-baseweb="select"] > div,
-[data-testid="stTextInput"] input,
-[data-testid="stDateInput"] input {
-    background-color: #FFFFFF !important;
-    border: 1px solid #CED4DA !important;
-    border-radius: 8px !important;
-    color: #212529 !important;
+[data-baseweb="select"] > div, [data-testid="stTextInput"] input, [data-testid="stDateInput"] input {
+    background-color: #FFFFFF !important; border: 1px solid #CED4DA !important;
+    border-radius: 8px !important; color: #212529 !important;
 }
-
 .stButton > button[kind="primary"] {
-    background-color: #0066CC !important;
-    border: none !important; color: #FFFFFF !important;
-    border-radius: 8px !important; font-weight: 600 !important;
-    transition: background .2s !important;
+    background-color: #0066CC !important; border: none !important;
+    color: #FFFFFF !important; border-radius: 8px !important; font-weight: 600 !important;
 }
 .stButton > button[kind="primary"]:hover { background-color: #0052A3 !important; }
 .stButton > button[kind="secondary"] {
-    background-color: #FFFFFF !important;
-    border: 1.5px solid #0066CC !important;
+    background-color: #FFFFFF !important; border: 1.5px solid #0066CC !important;
     color: #0066CC !important; border-radius: 8px !important; font-weight: 600 !important;
 }
-
-.stTabs [data-baseweb="tab-list"] {
-    gap: 4px; background: transparent;
-    border-bottom: 2px solid #DEE2E6; padding-bottom: 0;
-}
+.stTabs [data-baseweb="tab-list"] { gap: 4px; background: transparent; border-bottom: 2px solid #DEE2E6; }
 .stTabs [data-baseweb="tab"] {
     background: transparent !important; border: none !important;
     border-bottom: 3px solid transparent !important; border-radius: 0 !important;
-    color: #6C757D !important; font-weight: 500; padding: 10px 20px !important;
-    margin-bottom: -2px;
+    color: #6C757D !important; font-weight: 500; padding: 10px 20px !important; margin-bottom: -2px;
 }
 .stTabs [data-baseweb="tab"]:hover { color: #0066CC !important; }
-.stTabs [aria-selected="true"] {
-    color: #0066CC !important;
-    border-bottom-color: #0066CC !important;
-    font-weight: 700 !important; background: transparent !important;
-}
-
-.kpi-card {
-    background: #FFFFFF; border: 1px solid #E9ECEF;
-    border-radius: 12px; padding: 20px 18px; text-align: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,.06); transition: box-shadow .2s, transform .2s;
-}
+.stTabs [aria-selected="true"] { color: #0066CC !important; border-bottom-color: #0066CC !important; font-weight: 700 !important; background: transparent !important; }
+.kpi-card { background: #FFFFFF; border: 1px solid #E9ECEF; border-radius: 12px; padding: 20px 18px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.06); transition: box-shadow .2s, transform .2s; }
 .kpi-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.10); transform: translateY(-2px); }
-.kpi-val  { font-size: 1.9rem; font-weight: 700; letter-spacing: -.5px; line-height: 1.15; }
-.kpi-lbl  { font-size: .73rem; font-weight: 600; color: #6C757D;
-            text-transform: uppercase; letter-spacing: .08em; margin-top: 6px; }
-.kpi-sub  { font-size: .78rem; color: #ADB5BD; margin-top: 3px; }
-
-.badge { display: inline-flex; align-items: center; gap: 5px;
-         padding: 4px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; }
+.kpi-val { font-size: 1.9rem; font-weight: 700; letter-spacing: -.5px; line-height: 1.15; }
+.kpi-lbl { font-size: .73rem; font-weight: 600; color: #6C757D; text-transform: uppercase; letter-spacing: .08em; margin-top: 6px; }
+.kpi-sub { font-size: .78rem; color: #ADB5BD; margin-top: 3px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; }
 .badge-green { background: #D1F7E7; color: #0A6640; border: 1px solid #A3EFD0; }
 .badge-amber { background: #FFF3CD; color: #856404; border: 1px solid #FFE082; }
 .badge-red   { background: #FCE8E8; color: #9B1C1C; border: 1px solid #F5C6C6; }
-
-.login-card {
-    background: #FFFFFF; border: 1px solid #DEE2E6; border-radius: 16px;
-    padding: 48px 44px; max-width: 420px; margin: 60px auto 0 auto;
-    box-shadow: 0 8px 32px rgba(0,0,0,.10);
-}
-.sec-head {
-    font-size: 1rem; font-weight: 700; color: #0066CC;
-    border-left: 3px solid #0066CC; padding-left: 10px; margin: 24px 0 14px 0;
-}
+.login-card { background: #FFFFFF; border: 1px solid #DEE2E6; border-radius: 16px; padding: 48px 44px; max-width: 420px; margin: 60px auto 0 auto; box-shadow: 0 8px 32px rgba(0,0,0,.10); }
+.sec-head { font-size: 1rem; font-weight: 700; color: #0066CC; border-left: 3px solid #0066CC; padding-left: 10px; margin: 24px 0 14px 0; }
 .sb-logo  { text-align:center; font-size:2.6rem; margin-bottom:2px; }
 .sb-title { text-align:center; font-size:1.1rem; font-weight:800; color:#0066CC; margin-bottom:4px; }
 .sb-sub   { text-align:center; font-size:.78rem; color:#6C757D; margin-bottom:16px; }
-.data-pill {
-    background:#EBF3FF; border:1px solid #B3D1F5; border-radius:8px;
-    padding:10px 14px; font-size:.82rem; color:#004A99; margin-top:6px;
-}
-.gemini-banner {
-    background: #EBF3FF; border: 1px solid #B3D1F5; border-radius: 10px;
-    padding: 10px 16px; font-size: 12.5px; color: #004A99; margin-bottom: 14px;
-}
+.data-pill { background:#EBF3FF; border:1px solid #B3D1F5; border-radius:8px; padding:10px 14px; font-size:.82rem; color:#004A99; margin-top:6px; }
+.gemini-banner { background: #EBF3FF; border: 1px solid #B3D1F5; border-radius: 10px; padding: 10px 16px; font-size: 12.5px; color: #004A99; margin-bottom: 14px; }
+.sigma-card { background: #FFFFFF; border: 1px solid #E9ECEF; border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 12px; }
 table { width:100%; border-collapse:collapse; font-size:.87rem; }
 thead tr { background:#F8F9FA; }
-th { padding:10px 12px; text-align:left; font-weight:600;
-     color:#495057; border-bottom:2px solid #DEE2E6; }
+th { padding:10px 12px; text-align:left; font-weight:600; color:#495057; border-bottom:2px solid #DEE2E6; }
 td { padding:9px 12px; border-bottom:1px solid #F1F3F5; color:#212529; }
 tr:hover td { background:#F8F9FA; }
-[data-testid="stChatMessage"] {
-    background:#F8F9FA !important; border:1px solid #E9ECEF !important;
-    border-radius:12px !important;
-}
-[data-testid="stMetric"] {
-    background:#FFFFFF; border:1px solid #E9ECEF; border-radius:12px;
-    padding:16px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05);
-}
+[data-testid="stChatMessage"] { background:#F8F9FA !important; border:1px solid #E9ECEF !important; border-radius:12px !important; }
+[data-testid="stMetric"] { background:#FFFFFF; border:1px solid #E9ECEF; border-radius:12px; padding:16px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ==============================================================
-#  1. GOOGLE GEMINI – CONFIGURACIÓN
+#  1. GOOGLE GEMINI
 # ==============================================================
-# Modelos confirmados disponibles en tu cuenta (nombres exactos API v1beta)
 GEMINI_MODELS = [
-    "models/gemini-2.5-flash",       # mejor calidad, gratuito
-    "models/gemini-2.0-flash",       # rápido y estable, gratuito
-    "models/gemini-2.0-flash-lite",  # más ligero, gratuito
+    "models/gemini-2.5-flash",
+    "models/gemini-2.0-flash",
+    "models/gemini-2.0-flash-lite",
 ]
-
 GEMINI_SYSTEM = (
     "Eres AIQC, el sistema automatizado de Control de Calidad de un laboratorio clínico. "
     "REGLA ABSOLUTA: Cada respuesta DEBE incluir los valores numéricos reales del laboratorio "
-    "(valor medido, media, SD, Z-Score calculado, estado, regla violada) que se te proporcionan "
-    "en el contexto. NUNCA respondas de forma genérica sin citar esos datos. "
-    "Si te piden un plan de corrección, menciona explícitamente qué analito tiene el problema, "
-    "cuál es su Z-Score actual y qué regla de Westgard se ha violado. "
-    "Respondes siempre en español, de forma concisa y técnica. "
-    "Usas Markdown (negritas, listas, tablas) para mayor claridad. "
-    "Fórmula Z-Score: Z = (x − μ) / σ. Muéstrala siempre con valores reales."
+    "(valor medido, media, SD, Z-Score calculado, estado, regla violada) que se te proporcionan. "
+    "NUNCA respondas de forma genérica. Si te piden un plan de corrección, menciona "
+    "explícitamente qué analito tiene el problema, su Z-Score y la regla de Westgard violada. "
+    "Respondes en español, de forma concisa y técnica. Usas Markdown para mayor claridad. "
+    "Fórmula Z-Score: Z = (x − μ) / σ. Muéstrala con valores reales."
 )
-
-# temperature bajo para respuestas precisas; tokens altos para no cortar respuestas
 GEMINI_CFG = {"temperature": 0.2, "max_output_tokens": 2048, "top_p": 0.85}
-
 
 def get_api_key() -> str:
     return (
@@ -173,12 +109,9 @@ def get_api_key() -> str:
         os.environ.get("GEMINI_API_KEY", "")
     )
 
-
 def init_gemini():
-    """Inicializa Gemini probando cada modelo en orden hasta encontrar uno disponible."""
     api_key = get_api_key()
-    if not api_key:
-        return None
+    if not api_key: return None
     genai.configure(api_key=api_key)
     for model_name in GEMINI_MODELS:
         try:
@@ -205,15 +138,14 @@ def render_login():
         <div style="font-size:3rem;text-align:center">🔬</div>
         <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#0066CC">AIQC</div>
         <div style="text-align:center;font-size:.86rem;color:#6C757D;margin-bottom:28px">
-            Artificial Intelligence for Quality Control · v4.3
+            Artificial Intelligence for Quality Control · v4.4
         </div>
     </div>""", unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 1.8, 1])
     with mid:
         st.markdown("<br>", unsafe_allow_html=True)
-        user = st.text_input("Usuario",    placeholder="admin",  key="_u")
-        pwd  = st.text_input("Contraseña", type="password",
-                             placeholder="••••••", key="_p")
+        user = st.text_input("Usuario", placeholder="admin", key="_u")
+        pwd  = st.text_input("Contraseña", type="password", placeholder="••••••", key="_p")
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Acceder al sistema →", use_container_width=True, type="primary"):
             if user == VALID_USER and pwd == VALID_PASS:
@@ -226,7 +158,7 @@ if not st.session_state.get("auth"):
 
 
 # ==============================================================
-#  3. GENERADOR DE DATOS DEMO
+#  3. DATOS DEMO
 # ==============================================================
 @st.cache_data(show_spinner=False)
 def build_demo() -> pd.DataFrame:
@@ -237,19 +169,17 @@ def build_demo() -> pd.DataFrame:
     for i, d in enumerate(dates):
         rows.append({"Fecha": d, "Analito": "Potasio (K+)",
                      "Valor": round(np.random.normal(4.5, 0.15 * 0.85), 3),
-                     "Media_Objetivo": 4.5, "SD_Objetivo": 0.15,
-                     "Lote": f"LOT-{2026 + i // 10}"})
+                     "Media_Objetivo": 4.5, "SD_Objetivo": 0.15, "Lote": f"LOT-{2026+i//10}"})
     for i, d in enumerate(dates):
         drift = 2.5 * (i - 24) * 0.65 if i >= 25 else 0.0
         rows.append({"Fecha": d, "Analito": "ALT (Transaminasa)",
                      "Valor": round(np.random.normal(35.0 + drift, 2.5), 2),
-                     "Media_Objetivo": 35.0, "SD_Objetivo": 2.5,
-                     "Lote": f"LOT-{2026 + i // 10}"})
+                     "Media_Objetivo": 35.0, "SD_Objetivo": 2.5, "Lote": f"LOT-{2026+i//10}"})
     return pd.DataFrame(rows)
 
 
 # ==============================================================
-#  4. CARGA CSV / XLSX – NORMALIZACIÓN FLEXIBLE
+#  4. CARGA CSV/XLSX
 # ==============================================================
 COL_SYNONYMS = {
     "Fecha":          ["fecha","date","dia","timestamp","time","datetime"],
@@ -260,11 +190,11 @@ COL_SYNONYMS = {
     "Lote":           ["lote","lot","batch","lote_reactivo","reactivo"],
 }
 
-def _norm(s: str) -> str:
+def _norm(s):
     trans = str.maketrans("áéíóúàèìòùäëïöüÁÉÍÓÚ","aeiouaeiouaeiouAEIOU")
     return s.lower().strip().translate(trans)
 
-def normalizar_df(df: pd.DataFrame):
+def normalizar_df(df):
     df_n = {_norm(c): c for c in df.columns}
     rename = {}
     for interno, sins in COL_SYNONYMS.items():
@@ -283,65 +213,103 @@ def normalizar_df(df: pd.DataFrame):
     df2["Media_Objetivo"] = pd.to_numeric(df2["Media_Objetivo"],  errors="coerce")
     df2["SD_Objetivo"]    = pd.to_numeric(df2["SD_Objetivo"],     errors="coerce")
     df2 = df2.dropna(subset=obligatorias)
-    if df2.empty: return None, "Sin filas válidas tras la limpieza."
+    if df2.empty: return None, "Sin filas válidas."
     return df2[obligatorias + ["Lote"]].reset_index(drop=True), ""
 
 def leer_archivo(uploaded):
     name = uploaded.name.lower()
     try:
-        raw = pd.read_csv(uploaded, sep=None, engine="python") \
-              if name.endswith(".csv") else pd.read_excel(uploaded)
+        raw = pd.read_csv(uploaded, sep=None, engine="python") if name.endswith(".csv") else pd.read_excel(uploaded)
         return normalizar_df(raw)
     except Exception as e:
-        return None, f"Error al leer el archivo: {e}"
+        return None, f"Error: {e}"
 
 
 # ==============================================================
-#  5. LÓGICA DE ALERTAS – WESTGARD
+#  5. WESTGARD
 # ==============================================================
-def evaluar_westgard(serie: pd.DataFrame) -> pd.DataFrame:
+def evaluar_westgard(serie):
     df = serie.copy().sort_values("Fecha").reset_index(drop=True)
-    df["Z_Score"]       = (df["Valor"] - df["Media_Objetivo"]) / df["SD_Objetivo"]
-    df["Regla_Violada"] = "—"
-    df["Score_Riesgo"]  = 0
-    df["Estado"]        = "Verde"
+    df["Z_Score"] = (df["Valor"] - df["Media_Objetivo"]) / df["SD_Objetivo"]
+    df["Regla_Violada"] = "—"; df["Score_Riesgo"] = 0; df["Estado"] = "Verde"
     for i in range(len(df)):
         z = df.at[i, "Z_Score"]
         if abs(z) >= 3.0:
-            df.at[i, "Regla_Violada"] = "1_3s"
-            df.at[i, "Score_Riesgo"]  = 90
-            df.at[i, "Estado"]        = "Rojo"; continue
+            df.at[i, "Regla_Violada"] = "1_3s"; df.at[i, "Score_Riesgo"] = 90; df.at[i, "Estado"] = "Rojo"; continue
         if i >= 1:
             zp = df.at[i-1, "Z_Score"]
             if abs(z) >= 2.0 and abs(zp) >= 2.0 and np.sign(z) == np.sign(zp):
-                df.at[i, "Regla_Violada"] = "2_2s"
-                df.at[i, "Score_Riesgo"]  = 75
-                df.at[i, "Estado"]        = "Rojo"; continue
+                df.at[i, "Regla_Violada"] = "2_2s"; df.at[i, "Score_Riesgo"] = 75; df.at[i, "Estado"] = "Rojo"; continue
         if i >= 3:
             w = df.loc[i-3:i, "Z_Score"].values
             if all(abs(x) >= 1.0 for x in w) and len(set(np.sign(w))) == 1:
-                df.at[i, "Regla_Violada"] = "4_1s"
-                df.at[i, "Score_Riesgo"]  = 60
-                df.at[i, "Estado"]        = "Ámbar"; continue
+                df.at[i, "Regla_Violada"] = "4_1s"; df.at[i, "Score_Riesgo"] = 60; df.at[i, "Estado"] = "Ámbar"; continue
         if abs(z) >= 2.0:
-            df.at[i, "Regla_Violada"] = "1_2s (warn)"
-            df.at[i, "Score_Riesgo"]  = 45
-            df.at[i, "Estado"]        = "Ámbar"; continue
+            df.at[i, "Regla_Violada"] = "1_2s (warn)"; df.at[i, "Score_Riesgo"] = 45; df.at[i, "Estado"] = "Ámbar"; continue
         df.at[i, "Score_Riesgo"] = max(0, int(abs(z) * 18))
     return df
 
-def estado_badge(e: str) -> str:
+def estado_badge(e):
     cfg = {"Verde":("badge-green","●"),"Ámbar":("badge-amber","▲"),"Rojo":("badge-red","■")}
     cls, ico = cfg.get(e, ("badge-green","●"))
     return f'<span class="badge {cls}">{ico} {e}</span>'
 
 
 # ==============================================================
-#  6. GENERADOR PDF
+#  6. SIGMA METRICS
 # ==============================================================
-def generar_pdf(df_all: pd.DataFrame, analitos: list, fuente: str) -> bytes:
+# TEa estándar CLIA (Error Total Aceptable) por analito
+# Formato: "nombre_clave": (TEa_porcentaje, unidad, descripcion)
+TEA_CLIA = {
+    "Potasio (K+)":       (8.0,  "mmol/L", "CLIA ±0.5 mmol/L → ~8% a nivel normal"),
+    "ALT (Transaminasa)": (20.0, "U/L",    "CLIA ±20%"),
+    "Glucosa":            (10.0, "mg/dL",  "CLIA ±10%"),
+    "Sodio":              (4.0,  "mmol/L", "CLIA ±4 mmol/L"),
+    "Creatinina":         (15.0, "mg/dL",  "CLIA ±15%"),
+    "Colesterol":         (10.0, "mg/dL",  "CLIA ±10%"),
+    "Hemoglobina":        (7.0,  "g/dL",   "CLIA ±7%"),
+    "Calcio":             (8.0,  "mg/dL",  "CLIA ±8%"),
+}
+TEA_DEFAULT = 15.0  # % para analitos no listados
+
+def calcular_sigma(df_analito: pd.DataFrame, tea_pct: float) -> dict:
+    """
+    Calcula Sigma Metrics para un analito.
+    Sigma = (TEa% - |Sesgo%|) / CV%
+    """
+    if df_analito.empty: return {}
+    media  = df_analito["Media_Objetivo"].iloc[0]
+    sd     = df_analito["SD_Objetivo"].iloc[0]
+    vals   = df_analito["Valor"]
+
+    cv_pct    = (sd / media) * 100 if media != 0 else 0
+    sesgo_pct = abs((vals.mean() - media) / media) * 100 if media != 0 else 0
+    sigma     = (tea_pct - sesgo_pct) / cv_pct if cv_pct > 0 else 0
+
+    if sigma >= 6:   categoria = "🏆 Clase Mundial";  color = "#198754"
+    elif sigma >= 4: categoria = "✅ Buena calidad";  color = "#0066CC"
+    elif sigma >= 3: categoria = "⚠️ Aceptable";      color = "#FD7E14"
+    else:            categoria = "🔴 Revisar método"; color = "#DC3545"
+
+    return {
+        "sigma":     round(sigma, 2),
+        "cv_pct":    round(cv_pct, 2),
+        "sesgo_pct": round(sesgo_pct, 2),
+        "tea_pct":   tea_pct,
+        "categoria": categoria,
+        "color":     color,
+        "media":     round(media, 3),
+        "sd":        round(sd, 4),
+        "n":         len(vals),
+    }
+
+
+# ==============================================================
+#  7. GENERADOR PDF
+# ==============================================================
+def generar_pdf(df_all, analitos, fuente):
     pdf = FPDF(); pdf.set_auto_page_break(auto=True, margin=15); pdf.add_page()
-    pdf.set_fill_color(0, 102, 204); pdf.rect(0, 0, 210, 36, "F")
+    pdf.set_fill_color(0,102,204); pdf.rect(0,0,210,36,"F")
     pdf.set_font("Helvetica","B",18); pdf.set_text_color(255,255,255); pdf.ln(8)
     pdf.cell(0,10,"AIQC – Informe de Incidencias de Calidad",ln=True,align="C")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(220,235,255)
@@ -364,11 +332,9 @@ def generar_pdf(df_all: pd.DataFrame, analitos: list, fuente: str) -> bytes:
 
     sec("1. Resumen Ejecutivo")
     pdf.set_font("Helvetica","",10); pdf.set_text_color(33,37,41)
-    for line in [f"Periodo: {f_ini} a {f_fin}",
-                 f"Total mediciones: {total_pts}",
+    for line in [f"Periodo: {f_ini} a {f_fin}", f"Total mediciones: {total_pts}",
                  f"Puntos en Verde: {total_ok} ({100*total_ok//total_pts if total_pts else 0}%)",
-                 f"Alertas Ambar: {total_amb}",
-                 f"Alertas Rojo: {total_rojo}"]:
+                 f"Alertas Ambar: {total_amb}", f"Alertas Rojo: {total_rojo}"]:
         pdf.cell(0,7,line,ln=True)
     pdf.ln(4)
 
@@ -389,8 +355,32 @@ def generar_pdf(df_all: pd.DataFrame, analitos: list, fuente: str) -> bytes:
         pdf.ln()
     pdf.ln(5)
 
+    # Sigma Metrics en PDF
+    sec("3. Sigma Metrics (CLIA)")
+    sw=[55,22,22,22,22,45]; sh=["Analito","TEa%","CV%","Sesgo%","Sigma","Categoría"]
+    pdf.set_fill_color(240,242,245); pdf.set_text_color(73,80,87); pdf.set_font("Helvetica","B",9)
+    for w,h in zip(sw,sh): pdf.cell(w,8,h,border=1,fill=True)
+    pdf.ln()
+    for an in analitos:
+        sub  = df_all[df_all["Analito"]==an].copy()
+        tea  = TEA_CLIA.get(an, (TEA_DEFAULT,"",""))[0]
+        sig  = calcular_sigma(sub, tea)
+        if not sig: continue
+        s = sig["sigma"]
+        if s >= 6:   pdf.set_fill_color(209,247,231); pdf.set_text_color(10,102,64)
+        elif s >= 4: pdf.set_fill_color(219,234,254); pdf.set_text_color(0,102,204)
+        elif s >= 3: pdf.set_fill_color(255,243,205); pdf.set_text_color(133,100,4)
+        else:        pdf.set_fill_color(252,232,232); pdf.set_text_color(155,28,28)
+        pdf.set_font("Helvetica","",9)
+        cat_clean = sig["categoria"].replace("🏆","").replace("✅","").replace("⚠️","").replace("🔴","").strip()
+        for w,v in zip(sw,[an[:28],f"{sig['tea_pct']}%",f"{sig['cv_pct']}%",
+                           f"{sig['sesgo_pct']}%",str(sig['sigma']),cat_clean]):
+            pdf.cell(w,7,str(v),border=1,fill=True)
+        pdf.ln()
+    pdf.ln(5)
+
     viol = df_ev[df_ev["Estado"]!="Verde"].copy()
-    sec(f"3. Detalle de Violaciones ({len(viol)})")
+    sec(f"4. Detalle de Violaciones ({len(viol)})")
     if viol.empty:
         pdf.set_font("Helvetica","I",10); pdf.set_text_color(10,102,64)
         pdf.cell(0,7,"Sin violaciones en el periodo.",ln=True)
@@ -400,8 +390,8 @@ def generar_pdf(df_all: pd.DataFrame, analitos: list, fuente: str) -> bytes:
         for w,h in zip(vc,vhd): pdf.cell(w,7,h,border=1,fill=True)
         pdf.ln(); pdf.set_font("Helvetica","",8)
         for _,row in viol.iterrows():
-            if row["Estado"]=="Rojo":    pdf.set_fill_color(252,232,232); pdf.set_text_color(155,28,28)
-            else:                         pdf.set_fill_color(255,243,205); pdf.set_text_color(133,100,4)
+            if row["Estado"]=="Rojo": pdf.set_fill_color(252,232,232); pdf.set_text_color(155,28,28)
+            else:                      pdf.set_fill_color(255,243,205); pdf.set_text_color(133,100,4)
             for w,v in zip(vc,[row["Fecha"].strftime("%d/%m/%Y"),str(row["Analito"])[:22],
                                str(row["Valor"]),f"{row['Z_Score']:+.2f}",
                                row["Regla_Violada"],f"{int(row['Score_Riesgo'])}/100",row["Estado"]]):
@@ -409,48 +399,37 @@ def generar_pdf(df_all: pd.DataFrame, analitos: list, fuente: str) -> bytes:
             pdf.ln()
     pdf.ln(5)
 
-    sec("4. Recomendaciones")
+    sec("5. Recomendaciones")
     pdf.set_font("Helvetica","",10); pdf.set_text_color(33,37,41)
-    recs = (["ACCION URGENTE: alertas rojas activas. No liberar resultados.",
-             "Recalibrar el analizador con material de referencia trazable.",
+    recs = (["ACCION URGENTE: alertas rojas. No liberar resultados.",
+             "Recalibrar el analizador con material trazable.",
              "Verificar lote, temperatura y caducidad de reactivos.",
              "Repetir el control tras las acciones correctivas.",
              "Documentar todas las acciones con fecha y responsable."] if total_rojo > 0
             else ["Alertas de advertencia. Monitoreo estrecho recomendado.",
-                  "Verificar cadena de frio y almacenamiento de reactivos.",
-                  "Registrar observaciones en el sistema de trazabilidad."] if total_amb > 0
+                  "Verificar cadena de frio y almacenamiento.",
+                  "Registrar observaciones en el sistema."] if total_amb > 0
             else ["El laboratorio opera dentro de los criterios de Westgard.",
-                  "Continuar con la rutina de control de calidad diaria.",
-                  "Revisar periodicamente los limites con datos actualizados."])
+                  "Continuar con la rutina de QC diaria.",
+                  "Revisar periodicamente los limites."])
     for i,r in enumerate(recs,1): pdf.multi_cell(0,6,f"{i}. {r}"); pdf.ln(1)
 
     pdf.ln(4)
     pdf.set_draw_color(222,226,230); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(2)
     pdf.set_font("Helvetica","I",8); pdf.set_text_color(108,117,125)
-    pdf.cell(0,5,"AIQC v4.3 · Informe automatico · Uso interno del laboratorio",ln=True,align="C")
+    pdf.cell(0,5,"AIQC v4.4 · Informe automatico · Uso interno del laboratorio",ln=True,align="C")
     return bytes(pdf.output())
 
 
 # ==============================================================
-#  7. ASISTENTE IA – GOOGLE GEMINI CON ROTACIÓN AUTOMÁTICA
+#  8. ASISTENTE IA GEMINI
 # ==============================================================
-def ia_responde_gemini(pregunta: str, historial: list,
-                       df_all, analitos_ls, f_min, f_max) -> str:
-    """
-    Llama a Gemini con rotación automática de modelos.
-    Inyecta los datos reales del laboratorio en cada llamada.
-    """
+def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
     api_key = get_api_key()
     if not api_key:
-        return (
-            "❌ **API Key de Gemini no configurada.**\n\n"
-            "Ve a Streamlit Cloud → tu app → **Settings → Secrets** y añade:\n"
-            "```toml\n[gemini]\napi_key = \"AIzaSy...\"\n```"
-        )
-
+        return "❌ **API Key de Gemini no configurada.**\n\nVe a Streamlit Cloud → Settings → Secrets."
     genai.configure(api_key=api_key)
 
-    # — Construir resumen detallado del laboratorio —
     resumen = []
     for an in analitos_ls:
         sub = evaluar_westgard(
@@ -460,72 +439,63 @@ def ia_responde_gemini(pregunta: str, historial: list,
         if sub.empty: continue
         u = sub.iloc[-1]
         z_calc = (u['Valor'] - u['Media_Objetivo']) / u['SD_Objetivo']
+        tea  = TEA_CLIA.get(an, (TEA_DEFAULT,"",""))[0]
+        sig  = calcular_sigma(sub, tea)
         resumen.append(
             f"• Analito: {an}\n"
-            f"  - Último valor medido: {u['Valor']}\n"
-            f"  - Media objetivo (μ): {u['Media_Objetivo']}\n"
-            f"  - SD objetivo (σ): {u['SD_Objetivo']}\n"
+            f"  - Último valor: {u['Valor']} | Media: {u['Media_Objetivo']} | SD: {u['SD_Objetivo']}\n"
             f"  - Z-Score = ({u['Valor']} - {u['Media_Objetivo']}) / {u['SD_Objetivo']} = {z_calc:+.3f}\n"
-            f"  - Estado: {u['Estado']} | Regla violada: {u['Regla_Violada']} | Score: {int(u['Score_Riesgo'])}/100\n"
-            f"  - Alertas rojas en el período: {(sub['Estado']=='Rojo').sum()}\n"
-            f"  - Alertas ámbar en el período: {(sub['Estado']=='Ámbar').sum()}"
+            f"  - Estado: {u['Estado']} | Regla: {u['Regla_Violada']} | Score: {int(u['Score_Riesgo'])}/100\n"
+            f"  - Alertas rojas: {(sub['Estado']=='Rojo').sum()} | Ámbar: {(sub['Estado']=='Ámbar').sum()}\n"
+            f"  - Sigma Metrics: {sig.get('sigma','N/A')}σ | CV: {sig.get('cv_pct','N/A')}% | "
+            f"Sesgo: {sig.get('sesgo_pct','N/A')}% | TEa: {tea}% | {sig.get('categoria','')}"
         )
 
     contexto = (
         f"=== DATOS REALES DEL LABORATORIO ({f_min} → {f_max}) ===\n"
-        f"INSTRUCCIÓN CRÍTICA: USA ESTOS DATOS EXACTOS EN TU RESPUESTA.\n"
-        f"No respondas de forma genérica. Cita los valores numéricos reales.\n\n"
+        f"INSTRUCCIÓN CRÍTICA: USA ESTOS DATOS EXACTOS. No respondas de forma genérica.\n\n"
         f"{chr(10).join(resumen)}\n\n"
-        f"=== REGLAS DE WESTGARD ===\n"
-        f"1_3s: 1 punto fuera ±3SD → Rojo (error aleatorio grave)\n"
-        f"2_2s: 2 consecutivos fuera ±2SD mismo lado → Rojo (error sistemático)\n"
-        f"4_1s: 4 consecutivos fuera ±1SD mismo lado → Ámbar (deriva)\n"
-        f"1_2s: 1 punto fuera ±2SD → Ámbar (advertencia)\n\n"
-        f"=== PREGUNTA DEL USUARIO ===\n{pregunta}\n\n"
-        f"RECUERDA: Menciona explícitamente el analito, su valor medido, "
-        f"el Z-Score calculado y la regla violada en tu respuesta."
+        f"=== REGLAS WESTGARD ===\n"
+        f"1_3s: ±3SD → Rojo | 2_2s: 2 consec ±2SD → Rojo | 4_1s: 4 consec ±1SD → Ámbar\n\n"
+        f"=== SIGMA METRICS ===\n"
+        f"≥6σ: Clase Mundial | ≥4σ: Buena calidad | ≥3σ: Aceptable | <3σ: Revisar método\n"
+        f"Fórmula: Sigma = (TEa% - Sesgo%) / CV%\n\n"
+        f"=== PREGUNTA ===\n{pregunta}\n\n"
+        f"RECUERDA: Cita siempre el analito, valor, Z-Score, Sigma y regla violada."
     )
 
-    # Historial multi-turn
     gemini_hist = []
     for msg in historial[1:]:
         role = "user" if msg["role"] == "user" else "model"
         gemini_hist.append({"role": role, "parts": [msg["content"]]})
 
-    # — Rotación automática de modelos —
     last_error = ""
     for model_name in GEMINI_MODELS:
         try:
-            m = genai.GenerativeModel(
-                model_name=model_name,
-                generation_config=GEMINI_CFG,
-                system_instruction=GEMINI_SYSTEM,
-            )
-            chat     = m.start_chat(history=gemini_hist)
+            m = genai.GenerativeModel(model_name=model_name,
+                                      generation_config=GEMINI_CFG,
+                                      system_instruction=GEMINI_SYSTEM)
+            chat = m.start_chat(history=gemini_hist)
             response = chat.send_message(contexto)
             st.session_state["gemini_model_active"] = model_name
             return response.text
         except Exception as e:
             last_error = str(e)
-            err = last_error.lower()
-            if "api_key" in err or "403" in err:
-                return "❌ API Key inválida. Verifica que la copiaste correctamente en Secrets."
+            if "api_key" in last_error.lower() or "403" in last_error:
+                return "❌ API Key inválida. Verifica en Secrets."
             continue
 
-    return (
-        "⚠️ **Todos los modelos gratuitos han alcanzado su límite diario.**\n\n"
-        "Los límites se reinician automáticamente a medianoche.\n\n"
-        f"_Último error técnico: {last_error}_"
-    )
+    return (f"⚠️ **Todos los modelos han alcanzado su límite diario.**\n\n"
+            f"Los límites se reinician a medianoche.\n\n_Error: {last_error}_")
 
 
 # ==============================================================
-#  8. SIDEBAR
+#  9. SIDEBAR
 # ==============================================================
 with st.sidebar:
     st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sb-sub">Quality Control · v4.3</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sub">Quality Control · v4.4</div>', unsafe_allow_html=True)
     st.markdown("---")
 
     st.markdown("**📂 Fuente de datos**")
@@ -535,19 +505,18 @@ with st.sidebar:
     if uploaded:
         df_cargado, err = leer_archivo(uploaded)
         if df_cargado is not None:
-            df_all   = df_cargado; data_src = f"📄 {uploaded.name}"
+            df_all = df_cargado; data_src = f"📄 {uploaded.name}"
             st.markdown(f'<div class="data-pill">✅ <b>{uploaded.name}</b><br>'
                         f'{len(df_all)} filas · {df_all["Analito"].nunique()} analito(s)</div>',
                         unsafe_allow_html=True)
         else:
-            st.error(err); df_all = build_demo(); data_src = "Demo (archivo inválido)"
+            st.error(err); df_all = build_demo(); data_src = "Demo (inválido)"
     else:
         df_all = build_demo(); data_src = "🔬 Modo Demo"
         st.caption("Usando datos simulados de demostración.")
 
     st.markdown("---")
-    analito = st.selectbox("Analito activo",
-                           options=sorted(df_all["Analito"].unique()), key="sel_analito")
+    analito = st.selectbox("Analito activo", options=sorted(df_all["Analito"].unique()), key="sel_analito")
 
     fechas_d = sorted(df_all["Fecha"].dropna().unique())
     if len(fechas_d) >= 2:
@@ -575,7 +544,7 @@ with st.sidebar:
 
 
 # ==============================================================
-#  9. DATOS ACTIVOS
+#  10. DATOS ACTIVOS
 # ==============================================================
 df_raw = df_all[
     (df_all["Analito"] == analito) &
@@ -588,7 +557,7 @@ analitos_ls = sorted(df_all["Analito"].unique())
 
 
 # ==============================================================
-#  10. CABECERA
+#  11. CABECERA
 # ==============================================================
 c1, c2 = st.columns([4, 1])
 with c1:
@@ -597,8 +566,7 @@ with c1:
         f"<span style='color:#6C757D;font-size:.9rem'>"
         f"<b>Analito:</b> {analito} &nbsp;·&nbsp; "
         f"<b>Período:</b> {f_min.strftime('%d/%m/%Y')} → {f_max.strftime('%d/%m/%Y')} "
-        f"&nbsp;·&nbsp; <b>Fuente:</b> {data_src}</span>",
-        unsafe_allow_html=True)
+        f"&nbsp;·&nbsp; <b>Fuente:</b> {data_src}</span>", unsafe_allow_html=True)
 with c2:
     if ultima is not None:
         st.markdown("<br>", unsafe_allow_html=True)
@@ -607,10 +575,14 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 
 # ==============================================================
-#  11. TABS
+#  12. TABS
 # ==============================================================
-tab_dash, tab_chat, tab_log = st.tabs(
-    ["📊  Dashboard", "🤖  Asistente IA (Gemini)", "📋  Registro de Acciones"])
+tab_dash, tab_sigma, tab_chat, tab_log = st.tabs([
+    "📊  Dashboard",
+    "📈  Sigma Metrics",
+    "🤖  Asistente IA (Gemini)",
+    "📋  Registro de Acciones",
+])
 
 
 # ── TAB 1: DASHBOARD ─────────────────────────────────────────
@@ -631,15 +603,11 @@ with tab_dash:
             (k5, f"{score}/100",               "Score de Riesgo", risk_c,    ultima["Estado"]),
         ]:
             with col:
-                st.markdown(
-                    f'<div class="kpi-card">'
-                    f'<div class="kpi-val" style="color:{color}">{val}</div>'
-                    f'<div class="kpi-lbl">{lbl}</div>'
-                    f'<div class="kpi-sub">{sub}</div>'
-                    f'</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="kpi-card"><div class="kpi-val" style="color:{color}">{val}</div>'
+                            f'<div class="kpi-lbl">{lbl}</div><div class="kpi-sub">{sub}</div></div>',
+                            unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-
         m, sd = ultima["Media_Objetivo"], ultima["SD_Objetivo"]
         fig = go.Figure()
         fig.add_hrect(y0=m+2*sd, y1=m+3*sd, fillcolor="rgba(220,53,69,.07)",  line_width=0)
@@ -647,46 +615,33 @@ with tab_dash:
         fig.add_hrect(y0=m+sd,   y1=m+2*sd, fillcolor="rgba(255,193,7,.06)",  line_width=0)
         fig.add_hrect(y0=m-2*sd, y1=m-sd,   fillcolor="rgba(255,193,7,.06)",  line_width=0)
         fig.add_hrect(y0=m-sd,   y1=m+sd,   fillcolor="rgba(25,135,84,.04)",  line_width=0)
-
         for y_v,color,width,dash,name in [
-            (m,       "#198754",2.0,"solid","Media"),
-            (m+sd,    "#ADB5BD",1.0,"dash", "+1 SD"),
-            (m-sd,    "#ADB5BD",1.0,"dash", "−1 SD"),
-            (m+2*sd,  "#FD7E14",1.4,"dash", "+2 SD"),
-            (m-2*sd,  "#FD7E14",1.4,"dash", "−2 SD"),
-            (m+3*sd,  "#DC3545",1.8,"dot",  "+3 SD"),
-            (m-3*sd,  "#DC3545",1.8,"dot",  "−3 SD"),
+            (m,"#198754",2.0,"solid","Media"),(m+sd,"#ADB5BD",1.0,"dash","+1 SD"),
+            (m-sd,"#ADB5BD",1.0,"dash","−1 SD"),(m+2*sd,"#FD7E14",1.4,"dash","+2 SD"),
+            (m-2*sd,"#FD7E14",1.4,"dash","−2 SD"),(m+3*sd,"#DC3545",1.8,"dot","+3 SD"),
+            (m-3*sd,"#DC3545",1.8,"dot","−3 SD"),
         ]:
-            fig.add_hline(y=y_v, line_color=color, line_width=width,
-                          line_dash=dash, annotation_text=name,
-                          annotation_position="right",
+            fig.add_hline(y=y_v, line_color=color, line_width=width, line_dash=dash,
+                          annotation_text=name, annotation_position="right",
                           annotation_font=dict(color=color, size=11, family="Inter"))
-
         fig.add_trace(go.Scatter(x=df_series["Fecha"], y=df_series["Valor"],
                                  mode="lines", line=dict(color="#CED4DA", width=1.5),
                                  showlegend=False, hoverinfo="skip"))
-
         for estado, color in [("Verde","#198754"),("Ámbar","#FD7E14"),("Rojo","#DC3545")]:
             sub_df = df_series[df_series["Estado"]==estado]
             if sub_df.empty: continue
             fig.add_trace(go.Scatter(
-                x=sub_df["Fecha"], y=sub_df["Valor"],
-                mode="markers", name=estado,
+                x=sub_df["Fecha"], y=sub_df["Valor"], mode="markers", name=estado,
                 marker=dict(size=11, color=color, line=dict(color="#FFFFFF", width=2)),
-                hovertemplate=(f"<b>%{{x|%d %b %Y}}</b><br>Valor: <b>%{{y}}</b><br>"
-                               f"Estado: {estado}<extra></extra>"),
+                hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Valor: <b>%{{y}}</b><br>Estado: {estado}<extra></extra>",
             ))
-
         fig.update_layout(
             template="plotly_white",
             title=dict(text=f"Gráfico de Levey-Jennings — {analito}",
                        font=dict(size=15, color="#212529", family="Inter")),
-            paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-            font=dict(color="#495057", family="Inter"),
-            legend=dict(orientation="h", y=1.06, x=1, xanchor="right",
-                        bgcolor="rgba(0,0,0,0)"),
-            xaxis=dict(gridcolor="#F1F3F5", linecolor="#DEE2E6",
-                       tickformat="%d %b", title="Fecha"),
+            paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF", font=dict(color="#495057", family="Inter"),
+            legend=dict(orientation="h", y=1.06, x=1, xanchor="right", bgcolor="rgba(0,0,0,0)"),
+            xaxis=dict(gridcolor="#F1F3F5", linecolor="#DEE2E6", tickformat="%d %b", title="Fecha"),
             yaxis=dict(gridcolor="#F1F3F5", linecolor="#DEE2E6", title="Valor"),
             height=460, margin=dict(l=10,r=130,t=60,b=10), hovermode="x unified",
         )
@@ -696,50 +651,189 @@ with tab_dash:
         tail = df_series.tail(7)[["Fecha","Valor","Z_Score","Regla_Violada","Score_Riesgo","Estado","Lote"]].copy()
         tail["Fecha"]  = tail["Fecha"].dt.strftime("%d/%m/%Y")
         tail["Estado"] = tail["Estado"].apply(estado_badge)
-        st.write(tail.rename(columns={"Z_Score":"Z-Score","Regla_Violada":"Regla",
-                                       "Score_Riesgo":"Score"})
+        st.write(tail.rename(columns={"Z_Score":"Z-Score","Regla_Violada":"Regla","Score_Riesgo":"Score"})
                      .to_html(escape=False, index=False), unsafe_allow_html=True)
 
 
-# ── TAB 2: ASISTENTE IA GEMINI ───────────────────────────────
+# ── TAB 2: SIGMA METRICS ─────────────────────────────────────
+with tab_sigma:
+    st.markdown("### 📈 Sigma Metrics — Evaluación de Calidad Analítica")
+    st.caption(
+        "Sigma = (TEa% − Sesgo%) / CV%  ·  "
+        "TEa según criterios CLIA. Edita los valores en la tabla lateral si tienes TEa propios."
+    )
+
+    # — TEa editables por el usuario —
+    with st.expander("⚙️ Editar límites TEa (Error Total Aceptable) por analito", expanded=False):
+        st.caption("Puedes personalizar el TEa% para cada analito. Por defecto se usan criterios CLIA.")
+        tea_editado = {}
+        cols_tea = st.columns(min(len(analitos_ls), 3))
+        for i, an in enumerate(analitos_ls):
+            default_tea = TEA_CLIA.get(an, (TEA_DEFAULT,"",""))[0]
+            with cols_tea[i % len(cols_tea)]:
+                tea_editado[an] = st.number_input(
+                    f"TEa% — {an.split('(')[0].strip()}",
+                    min_value=1.0, max_value=50.0,
+                    value=float(default_tea), step=0.5, key=f"tea_{an}"
+                )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # — Calcular Sigma para todos los analitos —
+    sigma_data = []
+    for an in analitos_ls:
+        sub = df_all[
+            (df_all["Analito"]==an) &
+            (df_all["Fecha"]>=pd.Timestamp(f_min)) &
+            (df_all["Fecha"]<=pd.Timestamp(f_max))
+        ].copy()
+        tea = tea_editado.get(an, TEA_DEFAULT)
+        sig = calcular_sigma(sub, tea)
+        if sig:
+            sigma_data.append({"analito": an, **sig})
+
+    if not sigma_data:
+        st.warning("Sin datos suficientes para calcular Sigma Metrics.")
+    else:
+        # — KPIs de Sigma —
+        st.markdown('<div class="sec-head">Resumen por analito</div>', unsafe_allow_html=True)
+        cols_s = st.columns(len(sigma_data))
+        for col, d in zip(cols_s, sigma_data):
+            with col:
+                st.markdown(
+                    f'<div class="kpi-card">'
+                    f'<div class="kpi-val" style="color:{d["color"]}">{d["sigma"]}σ</div>'
+                    f'<div class="kpi-lbl">{d["analito"].split("(")[0].strip()}</div>'
+                    f'<div class="kpi-sub">{d["categoria"]}</div>'
+                    f'</div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # — Gráfico de barras Sigma —
+        fig_s = go.Figure()
+
+        # Zonas de calidad de fondo
+        max_x = len(sigma_data) + 0.5
+        fig_s.add_hrect(y0=6,  y1=10,  fillcolor="rgba(25,135,84,.08)",  line_width=0)
+        fig_s.add_hrect(y0=4,  y1=6,   fillcolor="rgba(0,102,204,.07)",  line_width=0)
+        fig_s.add_hrect(y0=3,  y1=4,   fillcolor="rgba(253,126,20,.07)", line_width=0)
+        fig_s.add_hrect(y0=0,  y1=3,   fillcolor="rgba(220,53,69,.07)",  line_width=0)
+
+        # Líneas de referencia
+        for y_v, color, lbl in [(6,"#198754","6σ Clase Mundial"),
+                                  (4,"#0066CC","4σ Buena"),
+                                  (3,"#FD7E14","3σ Mínimo")]:
+            fig_s.add_hline(y=y_v, line_color=color, line_width=1.5, line_dash="dash",
+                            annotation_text=lbl, annotation_position="right",
+                            annotation_font=dict(color=color, size=11))
+
+        # Barras
+        fig_s.add_trace(go.Bar(
+            x=[d["analito"].split("(")[0].strip() for d in sigma_data],
+            y=[d["sigma"] for d in sigma_data],
+            marker_color=[d["color"] for d in sigma_data],
+            marker_line_color="#FFFFFF", marker_line_width=2,
+            text=[f"{d['sigma']}σ" for d in sigma_data],
+            textposition="outside",
+            textfont=dict(size=14, color=[d["color"] for d in sigma_data], family="Inter"),
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Sigma: <b>%{y}σ</b><br>"
+                "<extra></extra>"
+            ),
+        ))
+
+        fig_s.update_layout(
+            template="plotly_white",
+            title=dict(text="Sigma Metrics por Analito — Criterios CLIA",
+                       font=dict(size=15, color="#212529", family="Inter")),
+            paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+            font=dict(color="#495057", family="Inter"),
+            xaxis=dict(gridcolor="#F1F3F5", linecolor="#DEE2E6", title="Analito"),
+            yaxis=dict(gridcolor="#F1F3F5", linecolor="#DEE2E6", title="Sigma (σ)", range=[0, 10]),
+            height=420, margin=dict(l=10,r=130,t=60,b=10), showlegend=False,
+        )
+        st.plotly_chart(fig_s, use_container_width=True)
+
+        # — Tabla detallada —
+        st.markdown('<div class="sec-head">Detalle de cálculo</div>', unsafe_allow_html=True)
+        tabla_sigma = []
+        for d in sigma_data:
+            tabla_sigma.append({
+                "Analito":   d["analito"],
+                "N datos":   d["n"],
+                "Media":     d["media"],
+                "SD":        d["sd"],
+                "CV%":       f"{d['cv_pct']}%",
+                "Sesgo%":    f"{d['sesgo_pct']}%",
+                "TEa%":      f"{d['tea_pct']}%",
+                "Sigma (σ)": d["sigma"],
+                "Categoría": d["categoria"],
+            })
+        df_tabla = pd.DataFrame(tabla_sigma)
+        st.write(df_tabla.to_html(escape=False, index=False), unsafe_allow_html=True)
+
+        # — Interpretación clínica —
+        st.markdown('<div class="sec-head">Interpretación clínica</div>', unsafe_allow_html=True)
+        for d in sigma_data:
+            s = d["sigma"]
+            an = d["analito"]
+            if s >= 6:
+                msg = (f"**{an}** alcanza **{s}σ** — rendimiento de clase mundial. "
+                       f"Puede reducir la frecuencia de controles a 1 por turno.")
+                ic  = "success"
+            elif s >= 4:
+                msg = (f"**{an}** con **{s}σ** — buena calidad analítica. "
+                       f"Las reglas de Westgard actuales son apropiadas.")
+                ic  = "info"
+            elif s >= 3:
+                msg = (f"**{an}** con **{s}σ** — rendimiento aceptable pero en el límite. "
+                       f"Considera revisar el CV o el sesgo. Aumenta la frecuencia de controles.")
+                ic  = "warning"
+            else:
+                msg = (f"**{an}** con **{s}σ** — rendimiento deficiente. "
+                       f"Acción correctiva necesaria: revisar calibración, reactivos y método analítico.")
+                ic  = "error"
+
+            if   ic == "success": st.success(msg)
+            elif ic == "info":    st.info(msg)
+            elif ic == "warning": st.warning(msg)
+            else:                 st.error(msg)
+
+
+# ── TAB 3: ASISTENTE IA ──────────────────────────────────────
 with tab_chat:
     st.markdown("### 🤖 Asistente AIQC — Powered by Google Gemini")
-
     modelo_activo = st.session_state.get("gemini_model_active", "models/gemini-2.5-flash")
     st.markdown(
         f'<div class="gemini-banner">🟢 <b>Google Gemini activo</b> · '
-        f'Modelo: <code>{modelo_activo}</code> · '
-        f'Gratuito · Rotación automática entre 3 modelos.</div>',
+        f'Modelo: <code>{modelo_activo}</code> · Gratuito · '
+        f'Incluye análisis de Sigma Metrics en el contexto.</div>',
         unsafe_allow_html=True)
 
     if "messages" not in st.session_state:
         st.session_state["messages"] = [{"role":"assistant","content":(
-            "¡Hola! Soy el **Asistente AIQC**, impulsado por **Google Gemini**. "
-            "Tengo acceso a los datos reales de tu laboratorio y respondo "
-            "citando siempre los valores concretos.\n\n"
+            "¡Hola! Soy el **Asistente AIQC v4.4**. Ahora también analizo los **Sigma Metrics** "
+            "de tus analitos junto con las reglas de Westgard.\n\n"
             "Prueba a preguntarme:\n"
-            "- *¿Cómo está el ALT?*\n"
-            "- *¿Hay violaciones de Westgard activas?*\n"
-            "- *Dame un plan de acción correctivo*\n"
-            "- *Calcula el Z-Score del Potasio*"
+            "- *¿Cuál es el Sigma del ALT?*\n"
+            "- *¿Qué analito tiene peor calidad analítica?*\n"
+            "- *Dame un plan correctivo para el laboratorio*\n"
+            "- *¿Hay violaciones de Westgard activas?*"
         )}]
 
     for msg in st.session_state["messages"]:
-        with st.chat_message(msg["role"],
-                             avatar="🤖" if msg["role"]=="assistant" else "👤"):
+        with st.chat_message(msg["role"], avatar="🤖" if msg["role"]=="assistant" else "👤"):
             st.markdown(msg["content"])
 
     if prompt := st.chat_input("Escribe tu consulta clínica…"):
         st.session_state["messages"].append({"role":"user","content":prompt})
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(prompt)
+        with st.chat_message("user", avatar="👤"): st.markdown(prompt)
         with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Gemini está analizando los datos del laboratorio…"):
+            with st.spinner("Gemini está analizando datos y Sigma Metrics…"):
                 resp = ia_responde_gemini(
-                    prompt,
-                    st.session_state["messages"],
-                    df_all, analitos_ls, f_min, f_max
-                )
+                    prompt, st.session_state["messages"],
+                    df_all, analitos_ls, f_min, f_max)
                 st.markdown(resp)
         st.session_state["messages"].append({"role":"assistant","content":resp})
 
@@ -747,7 +841,7 @@ with tab_chat:
         st.session_state["messages"] = [st.session_state["messages"][0]]; st.rerun()
 
 
-# ── TAB 3: REGISTRO DE ACCIONES + PDF ────────────────────────
+# ── TAB 4: REGISTRO + PDF ─────────────────────────────────────
 with tab_log:
     col_ttl, col_pdf = st.columns([3,1])
     with col_ttl:
