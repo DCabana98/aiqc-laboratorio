@@ -1,6 +1,6 @@
 # ==============================================================
 #  AIQC – Artificial Intelligence for Quality Control
-#  Versión: 4.8 – Base de conocimiento Bio-Rad (Liquichek + Lyphochek)
+#  Versión: 4.9 – Rediseño SaaS médico (gris + azul/verde)
 #  Deploy:  streamlit run app.py
 #  Deps:    pip install streamlit plotly pandas numpy fpdf2 openpyxl google-generativeai kaleido
 # ==============================================================
@@ -22,85 +22,274 @@ st.set_page_config(
 )
 
 # ==============================================================
-#  ESTILOS GLOBALES
+#  ESTILOS GLOBALES v4.9
 # ==============================================================
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-html, body, [data-testid="stAppViewContainer"], [data-testid="stAppViewBlockContainer"] {
-    background-color: #FFFFFF !important; color: #212529;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ── BASE ─────────────────────────────────────────────────── */
+html, body,
+[data-testid="stAppViewContainer"],
+[data-testid="stAppViewBlockContainer"] {
+    background-color: #F4F6F9 !important;
+    color: #1C2B3A;
     font-family: 'Inter', 'Segoe UI', sans-serif;
 }
-#MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
-[data-testid="stSidebar"] { background-color: #F8F9FA !important; border-right: 1px solid #DEE2E6; }
-[data-testid="stSidebar"] * { color: #212529 !important; }
-[data-baseweb="select"] > div, [data-testid="stTextInput"] input, [data-testid="stDateInput"] input {
-    background-color: #FFFFFF !important; border: 1px solid #CED4DA !important;
-    border-radius: 8px !important; color: #212529 !important;
+#MainMenu, footer, header,
+[data-testid="stToolbar"],
+[data-testid="stDecoration"] { display: none !important; }
+
+/* ── SIDEBAR ───────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1E2D40 0%, #16202E 100%) !important;
+    border-right: none !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,.18);
 }
+[data-testid="stSidebar"] * { color: #CBD5E1 !important; }
+[data-testid="stSidebar"] strong,
+[data-testid="stSidebar"] b   { color: #E2E8F0 !important; }
+[data-testid="stSidebar"] hr  { border-color: rgba(255,255,255,.10) !important; }
+[data-testid="stSidebar"] .stCaption { color: #64748B !important; }
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+    background: rgba(255,255,255,.05) !important;
+    border: 1.5px dashed rgba(255,255,255,.20) !important;
+    border-radius: 10px !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background: rgba(255,255,255,.08) !important;
+    border: 1px solid rgba(255,255,255,.15) !important;
+    border-radius: 8px !important;
+    color: #E2E8F0 !important;
+}
+[data-testid="stSidebar"] [data-testid="stDateInput"] input {
+    background: rgba(255,255,255,.08) !important;
+    border: 1px solid rgba(255,255,255,.15) !important;
+    border-radius: 8px !important;
+    color: #E2E8F0 !important;
+}
+
+/* ── INPUTS (área principal) ───────────────────────────────── */
+[data-baseweb="select"] > div,
+[data-testid="stTextInput"] input,
+[data-testid="stDateInput"] input {
+    background-color: #FFFFFF !important;
+    border: 1.5px solid #D1D9E0 !important;
+    border-radius: 8px !important;
+    color: #1C2B3A !important;
+    transition: border-color .2s;
+}
+
+/* ── BOTONES ───────────────────────────────────────────────── */
 .stButton > button[kind="primary"] {
-    background-color: #0066CC !important; border: none !important;
-    color: #FFFFFF !important; border-radius: 8px !important; font-weight: 600 !important;
+    background: linear-gradient(135deg, #1A6FC4 0%, #1557A0 100%) !important;
+    border: none !important;
+    color: #FFFFFF !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    letter-spacing: .02em !important;
+    box-shadow: 0 2px 8px rgba(26,111,196,.30) !important;
+    transition: all .2s !important;
 }
-.stButton > button[kind="primary"]:hover { background-color: #0052A3 !important; }
+.stButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #1557A0 0%, #0F3F78 100%) !important;
+    box-shadow: 0 4px 16px rgba(26,111,196,.40) !important;
+    transform: translateY(-1px) !important;
+}
 .stButton > button[kind="secondary"] {
-    background-color: #FFFFFF !important; border: 1.5px solid #0066CC !important;
-    color: #0066CC !important; border-radius: 8px !important; font-weight: 600 !important;
+    background-color: #FFFFFF !important;
+    border: 1.5px solid #1A6FC4 !important;
+    color: #1A6FC4 !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: all .2s !important;
 }
-.stTabs [data-baseweb="tab-list"] { gap: 4px; background: transparent; border-bottom: 2px solid #DEE2E6; }
+.stButton > button[kind="secondary"]:hover { background-color: #EBF3FF !important; }
+
+/* ── TABS ──────────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 6px;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 5px 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
 .stTabs [data-baseweb="tab"] {
-    background: transparent !important; border: none !important;
-    border-bottom: 3px solid transparent !important; border-radius: 0 !important;
-    color: #6C757D !important; font-weight: 500; padding: 10px 20px !important; margin-bottom: -2px;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 8px !important;
+    color: #64748B !important;
+    font-weight: 500 !important;
+    font-size: .875rem !important;
+    padding: 8px 18px !important;
+    transition: all .18s !important;
 }
-.stTabs [data-baseweb="tab"]:hover { color: #0066CC !important; }
-.stTabs [aria-selected="true"] { color: #0066CC !important; border-bottom-color: #0066CC !important; font-weight: 700 !important; background: transparent !important; }
-.kpi-card { background: #FFFFFF; border: 1px solid #E9ECEF; border-radius: 12px; padding: 20px 18px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.06); transition: box-shadow .2s, transform .2s; }
-.kpi-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.10); transform: translateY(-2px); }
-.kpi-val { font-size: 1.9rem; font-weight: 700; letter-spacing: -.5px; line-height: 1.15; }
-.kpi-lbl { font-size: .73rem; font-weight: 600; color: #6C757D; text-transform: uppercase; letter-spacing: .08em; margin-top: 6px; }
-.kpi-sub { font-size: .78rem; color: #ADB5BD; margin-top: 3px; }
-.badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; }
-.badge-green { background: #D1F7E7; color: #0A6640; border: 1px solid #A3EFD0; }
-.badge-amber { background: #FFF3CD; color: #856404; border: 1px solid #FFE082; }
-.badge-red   { background: #FCE8E8; color: #9B1C1C; border: 1px solid #F5C6C6; }
-.nivel-pill  { display:inline-block; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; }
-.nivel-N  { background:#E8F4FD; color:#0066CC; border:1px solid #B3D1F5; }
-.nivel-PB { background:#FFF3CD; color:#856404; border:1px solid #FFE082; }
-.nivel-PA { background:#FCE8E8; color:#9B1C1C; border:1px solid #F5C6C6; }
-.login-card { background: #FFFFFF; border: 1px solid #DEE2E6; border-radius: 16px; padding: 48px 44px; max-width: 420px; margin: 60px auto 0 auto; box-shadow: 0 8px 32px rgba(0,0,0,.10); }
-.sec-head { font-size: 1rem; font-weight: 700; color: #0066CC; border-left: 3px solid #0066CC; padding-left: 10px; margin: 24px 0 14px 0; }
-.sb-logo  { text-align:center; font-size:2.6rem; margin-bottom:2px; }
-.sb-title { text-align:center; font-size:1.1rem; font-weight:800; color:#0066CC; margin-bottom:4px; }
-.sb-sub   { text-align:center; font-size:.78rem; color:#6C757D; margin-bottom:16px; }
-.data-pill { background:#EBF3FF; border:1px solid #B3D1F5; border-radius:8px; padding:10px 14px; font-size:.82rem; color:#004A99; margin-top:6px; }
-.gemini-banner { background: #EBF3FF; border: 1px solid #B3D1F5; border-radius: 10px; padding: 10px 16px; font-size: 12.5px; color: #004A99; margin-bottom: 14px; }
-.biorad-card { background: #F8F9FA; border: 1px solid #DEE2E6; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
-.biorad-card-red { background: #FFF5F5; border: 1.5px solid #F5C6C6; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
-.biorad-card-amber { background: #FFFBF0; border: 1.5px solid #FFE082; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
-table { width:100%; border-collapse:collapse; font-size:.87rem; }
-thead tr { background:#F8F9FA; }
-th { padding:10px 12px; text-align:left; font-weight:600; color:#495057; border-bottom:2px solid #DEE2E6; }
-td { padding:9px 12px; border-bottom:1px solid #F1F3F5; color:#212529; }
-tr:hover td { background:#F8F9FA; }
-[data-testid="stChatMessage"] { background:#F8F9FA !important; border:1px solid #E9ECEF !important; border-radius:12px !important; }
-[data-testid="stMetric"] { background:#FFFFFF; border:1px solid #E9ECEF; border-radius:12px; padding:16px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+.stTabs [data-baseweb="tab"]:hover {
+    background: #F1F5F9 !important;
+    color: #1A6FC4 !important;
+}
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(135deg, #1A6FC4 0%, #0D9E6E 100%) !important;
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 8px rgba(26,111,196,.28) !important;
+}
+
+/* ── KPI CARDS ─────────────────────────────────────────────── */
+.kpi-card {
+    background: #FFFFFF;
+    border: 1px solid #E8EDF2;
+    border-top: 3px solid #1A6FC4;
+    border-radius: 14px;
+    padding: 22px 20px 18px 20px;
+    text-align: center;
+    box-shadow: 0 2px 12px rgba(0,0,0,.06);
+    transition: box-shadow .22s, transform .22s;
+}
+.kpi-card:hover {
+    box-shadow: 0 8px 28px rgba(0,0,0,.11);
+    transform: translateY(-3px);
+}
+.kpi-card.estado-verde { border-top-color: #0D9E6E; }
+.kpi-card.estado-ambar { border-top-color: #F59E0B; }
+.kpi-card.estado-rojo  { border-top-color: #E53E3E; }
+.kpi-val {
+    font-size: 2.1rem; font-weight: 800;
+    letter-spacing: -.6px; line-height: 1.1;
+}
+.kpi-lbl {
+    font-size: .70rem; font-weight: 700; color: #94A3B8;
+    text-transform: uppercase; letter-spacing: .10em; margin-top: 8px;
+}
+.kpi-sub { font-size: .76rem; color: #B0BAC9; margin-top: 3px; }
+
+/* ── BADGES DE ESTADO ──────────────────────────────────────── */
+.badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px; border-radius: 999px;
+    font-size: .78rem; font-weight: 700; letter-spacing: .03em;
+    box-shadow: 0 1px 4px rgba(0,0,0,.10);
+}
+.badge-green { background: linear-gradient(135deg,#D1FAE5,#A7F3D0); color:#065F46; border:1px solid #6EE7B7; }
+.badge-amber { background: linear-gradient(135deg,#FEF3C7,#FDE68A); color:#92400E; border:1px solid #FCD34D; }
+.badge-red   { background: linear-gradient(135deg,#FEE2E2,#FECACA); color:#991B1B; border:1px solid #FCA5A5; }
+
+/* ── BADGES DE NIVEL ───────────────────────────────────────── */
+.nivel-pill { display:inline-block; padding:4px 13px; border-radius:999px; font-size:.76rem; font-weight:700; letter-spacing:.03em; }
+.nivel-N  { background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; }
+.nivel-PB { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
+.nivel-PA { background:#FFF1F2; color:#9F1239; border:1px solid #FECDD3; }
+
+/* ── HEADER PRINCIPAL ──────────────────────────────────────── */
+.aiqc-header {
+    background: linear-gradient(135deg, #1A6FC4 0%, #0D9E6E 100%);
+    border-radius: 16px; padding: 22px 28px; margin-bottom: 24px;
+    box-shadow: 0 4px 20px rgba(26,111,196,.22);
+}
+.aiqc-header h2 { color:#FFFFFF !important; margin:0 0 4px 0; font-size:1.5rem; font-weight:800; }
+.aiqc-header .meta { color:rgba(255,255,255,.82); font-size:.875rem; }
+
+/* ── SIDEBAR LOGO / TÍTULO ─────────────────────────────────── */
+.sb-logo  { text-align:center; font-size:2.8rem; margin-bottom:2px; }
+.sb-title {
+    text-align:center; font-size:1.2rem; font-weight:800;
+    background:linear-gradient(135deg,#60A5FA,#34D399);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:2px;
+}
+.sb-sub { text-align:center; font-size:.75rem; color:#64748B !important; margin-bottom:16px; }
+
+/* ── DATA PILL ─────────────────────────────────────────────── */
+.data-pill {
+    background:rgba(96,165,250,.12); border:1px solid rgba(96,165,250,.28);
+    border-radius:10px; padding:10px 14px; font-size:.82rem;
+    color:#93C5FD !important; margin-top:8px;
+}
+
+/* ── SECCIÓN HEADING ───────────────────────────────────────── */
+.sec-head {
+    font-size:.95rem; font-weight:700; color:#1A6FC4;
+    border-left:3px solid #0D9E6E; padding-left:10px; margin:26px 0 14px 0;
+}
+
+/* ── LOGIN CARD ────────────────────────────────────────────── */
+.login-card {
+    background:#FFFFFF; border:1px solid #E2E8F0; border-radius:20px;
+    padding:52px 48px; max-width:420px; margin:60px auto 0 auto;
+    box-shadow:0 12px 40px rgba(0,0,0,.10);
+}
+
+/* ── GEMINI BANNER ─────────────────────────────────────────── */
+.gemini-banner {
+    background:linear-gradient(135deg,#EFF6FF 0%,#ECFDF5 100%);
+    border:1px solid #BFDBFE; border-radius:10px;
+    padding:10px 16px; font-size:12.5px; color:#1E40AF; margin-bottom:14px;
+}
+
+/* ── BIO-RAD CARDS ─────────────────────────────────────────── */
+.biorad-card {
+    background:#FFFFFF; border:1px solid #E2E8F0; border-left:4px solid #1A6FC4;
+    border-radius:12px; padding:18px 20px; margin-bottom:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+.biorad-card-red {
+    background:#FFFAFA; border:1px solid #FECACA; border-left:4px solid #E53E3E;
+    border-radius:12px; padding:18px 20px; margin-bottom:12px;
+    box-shadow:0 2px 12px rgba(229,62,62,.08);
+}
+.biorad-card-amber {
+    background:#FFFDF5; border:1px solid #FDE68A; border-left:4px solid #F59E0B;
+    border-radius:12px; padding:18px 20px; margin-bottom:12px;
+    box-shadow:0 2px 12px rgba(245,158,11,.08);
+}
+
+/* ── TABLAS ────────────────────────────────────────────────── */
+table { width:100%; border-collapse:collapse; font-size:.86rem; }
+thead tr { background:#F8FAFC; }
+th {
+    padding:11px 13px; text-align:left; font-weight:700; color:#475569;
+    border-bottom:2px solid #E2E8F0; text-transform:uppercase;
+    font-size:.72rem; letter-spacing:.06em;
+}
+td { padding:10px 13px; border-bottom:1px solid #F1F5F9; color:#1C2B3A; }
+tr:hover td { background:#F8FAFC; }
+
+/* ── CHAT ──────────────────────────────────────────────────── */
+[data-testid="stChatMessage"] {
+    background:#FFFFFF !important; border:1px solid #E2E8F0 !important;
+    border-radius:14px !important; box-shadow:0 1px 4px rgba(0,0,0,.05) !important;
+}
+
+/* ── METRIC WIDGET ─────────────────────────────────────────── */
+[data-testid="stMetric"] {
+    background:#FFFFFF; border:1px solid #E2E8F0;
+    border-radius:12px; padding:16px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+
+/* ── EXPANDERS ─────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    background:#FFFFFF !important; border:1px solid #E2E8F0 !important;
+    border-radius:10px !important;
+}
+
+/* ── SCROLLBAR ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:#F1F5F9; }
+::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:#94A3B8; }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ==============================================================
 #  BASE DE CONOCIMIENTO BIO-RAD
-#  Fuentes: Inserts Liquichek / Lyphochek (Bio-Rad), CLSI EP15,
-#           guías técnicas QCNet y literatura Westgard Associates.
 # ==============================================================
 BIORAD_KB = {
-    # ── BIOQUÍMICA BÁSICA ─────────────────────────────────────
     "Glucosa": {
         "producto":   "Liquichek Chemistry Control / Lyphochek Chemistry",
         "grupo":      "Bioquímica básica",
         "causas_comunes": [
-            "Evaporación del vial de control (apertura prolongada o temperatura elevada)",
+            "Evaporación del vial (apertura prolongada o temperatura elevada)",
             "Degradación glucolítica in vitro si el control no se procesa en ≤2 h tras reconstitución",
             "Interferencia por hemólisis severa (libera glucosa eritrocitaria)",
             "Calibración desactualizada o curva de calibración no lineal en el rango del control",
@@ -110,46 +299,42 @@ BIORAD_KB = {
             "🔴 No liberar resultados de pacientes hasta resolver la alarma",
             "Repetir el control con un NUEVO vial del mismo lote",
             "Si persiste: repetir con vial de LOTE DIFERENTE para descartar lote defectuoso",
-            "Verificar temperatura de almacenamiento del control (2–8 °C según insert Bio-Rad)",
+            "Verificar temperatura de almacenamiento (2–8 °C según insert Bio-Rad)",
             "Comprobar fecha de caducidad y tiempo desde reconstitución (máx. 5 días refrigerado)",
             "Recalibrar con estándar trazable IDMS y repetir control",
-            "Revisar estado del reactivo (fecha caducidad, turbidez, conservación)",
             "Documentar acción y responsable en el registro de trazabilidad",
         ],
         "acciones_warn": [
             "🟡 Monitoreo estrecho — no bloquear resultados pero aumentar vigilancia",
-            "Revisar si hay tendencia en el gráfico Levey-Jennings (¿deriva progresiva?)",
+            "Revisar si hay tendencia en el gráfico Levey-Jennings",
             "Verificar temperatura del baño termostatizado del analizador",
             "Comprobar que el vial se ha mezclado correctamente antes de pipetear",
             "Registrar observación en el libro de incidencias",
         ],
         "causas_deriva": [
-            "Deterioro progresivo del reactivo (degradación enzimática de glucosa oxidasa/hexoquinasa)",
-            "Deriva del calibrador (recalibrar según protocolo del fabricante del analizador)",
+            "Deterioro progresivo del reactivo (degradación enzimática)",
+            "Deriva del calibrador (recalibrar según protocolo del fabricante)",
             "Fluctuación de temperatura ambiente del laboratorio",
         ],
-        "estabilidad_biorad": "Reconstituido: 5 días a 2-8 °C / 30 días a -20 °C (sin descongelar repetidamente)",
-        "interferencias": "Hemólisis (↑), lipemia severa (↓ método GOD-PAP), ácido ascórbico >30 mg/dL (↓)",
+        "estabilidad_biorad": "Reconstituido: 5 días a 2-8 °C / 30 días a -20 °C",
+        "interferencias": "Hemólisis (↑), lipemia severa (↓ GOD-PAP), ácido ascórbico >30 mg/dL (↓)",
         "referencia": "Liquichek Chemistry Control Insert · Bio-Rad cat. 66796 / CLSI EP7-A2",
     },
-
     "Potasio (K+)": {
         "producto":   "Liquichek Chemistry Control / Liquichek Electrolyte Plus",
         "grupo":      "Bioquímica básica",
         "causas_comunes": [
             "Evaporación del vial (concentra el analito → resultado falsamente elevado)",
-            "Contaminación por EDTA (anticoagulante de tubos — eleva K⁺ falsamente)",
+            "Contaminación por EDTA (eleva K⁺ falsamente)",
             "Hemólisis in vitro del control (libera K⁺ intracelular)",
             "Interferencia del sodio en electrodos ISE por ruptura de membrana selectiva",
             "Temperatura incorrecta del módulo de electrodos ISE",
         ],
         "acciones_1_3s": [
-            "🔴 Verificar que el vial de control no lleva abierto más de 8 horas",
-            "Repetir con vial nuevo — si el resultado corrige, el problema era el vial",
+            "🔴 Verificar que el vial no lleva abierto más de 8 horas",
+            "Repetir con vial nuevo — si corrige, el problema era el vial",
             "Revisar el electrodo ISE de potasio (limpieza, membrana, solución de referencia)",
-            "Comprobar la solución de referencia interna y el buffer de calibración ISE",
             "Recalibrar el módulo ISE con soluciones estándar trazables",
-            "Verificar que no hay hemólisis visible en el control reconstituido",
             "Si persiste: contactar soporte técnico del analizador",
         ],
         "acciones_warn": [
@@ -159,155 +344,137 @@ BIORAD_KB = {
         ],
         "causas_deriva": [
             "Desgaste progresivo de la membrana del electrodo ISE (vida útil: 3-6 meses)",
-            "Acumulación de proteínas en el electrodo (limpiar con solución de proteasa)",
+            "Acumulación de proteínas en el electrodo",
             "Deriva del calibrador de 2 puntos ISE",
         ],
         "estabilidad_biorad": "Reconstituido: 8 h a temperatura ambiente / 5 días a 2-8 °C",
-        "interferencias": "Hemólisis (↑↑ efecto mayor), EDTA (↑), heparina litio (efecto mínimo)",
+        "interferencias": "Hemólisis (↑↑), EDTA (↑), heparina litio (efecto mínimo)",
         "referencia": "Liquichek Electrolyte Plus Insert · Bio-Rad · CLSI EP9-A3",
     },
-
     "Sodio": {
         "producto":   "Liquichek Chemistry Control / Liquichek Electrolyte Plus",
         "grupo":      "Bioquímica básica",
         "causas_comunes": [
-            "Pseudohiponatremia por lipemia severa en métodos de llama (no afecta ISE indirecto)",
+            "Pseudohiponatremia por lipemia severa en métodos de llama",
             "Dilución incorrecta del control durante la reconstitución",
             "Electrodo ISE de sodio con membrana deteriorada o contaminada",
-            "Contaminación por agua destilada con sodio residual",
         ],
         "acciones_1_3s": [
             "🔴 Repetir control con vial nuevo del mismo lote",
             "Verificar el volumen de reconstitución (agua ultrapura, volumen exacto del insert)",
             "Revisar y limpiar el electrodo ISE de sodio",
             "Recalibrar con solución estándar de NaCl trazable NIST",
-            "Comprobar el estado del agua destilada/purificada utilizada",
         ],
         "acciones_warn": [
-            "Revisar que el control se ha mezclado por inversión suave (no agitar vigorosamente)",
+            "Revisar que el control se ha mezclado por inversión suave",
             "Verificar temperatura de la celda ISE",
-            "Comprobar la solución de referencia del electrodo",
         ],
         "causas_deriva": [
             "Envejecimiento de la membrana del electrodo ISE de sodio",
             "Cambio de lote de reactivo sin recalibración",
         ],
         "estabilidad_biorad": "Reconstituido: 8 h a temperatura ambiente / 5 días a 2-8 °C",
-        "interferencias": "Lipemia (↓ en métodos fotométricos de llama), hemólisis (efecto mínimo en ISE)",
+        "interferencias": "Lipemia (↓ métodos fotométricos), hemólisis (efecto mínimo en ISE)",
         "referencia": "Liquichek Electrolyte Plus Insert · Bio-Rad · CLSI EP7-A2",
     },
-
     "Creatinina": {
         "producto":   "Liquichek Chemistry Control",
         "grupo":      "Bioquímica básica",
         "causas_comunes": [
             "Interferencia por cromógenos de Jaffé (cefalosporinas, acetona, bilirrubina)",
-            "Diferencia de método: Jaffé cinético vs enzimático (los valores del insert son por método)",
-            "Ictericia severa puede causar falsa elevación en método Jaffé",
-            "Calibración trazable a IDMS requerida — calibradores no trazables generan sesgo",
+            "Diferencia de método: Jaffé cinético vs enzimático",
+            "Calibración no trazable a IDMS genera sesgo",
         ],
         "acciones_1_3s": [
-            "🔴 Confirmar que el insert Bio-Rad tiene valores asignados para TU método/instrumento",
-            "Cambiar a método enzimático si hay interferencia por bilirrubina o fármacos",
+            "🔴 Confirmar que el insert tiene valores para TU método/instrumento",
+            "Cambiar a método enzimático si hay interferencia por bilirrubina",
             "Recalibrar con calibrador trazable a IDMS (NIST SRM 967)",
             "Repetir control con vial nuevo",
-            "Verificar si el paciente (o el control) tiene niveles de cefalosporinas que interfieran",
         ],
         "acciones_warn": [
-            "Verificar el método utilizado (Jaffé vs enzimático) y usar valores correctos del insert",
-            "Revisar fecha de caducidad del reactivo Jaffé (ácido pícrico se degrada)",
+            "Verificar el método utilizado (Jaffé vs enzimático)",
+            "Revisar fecha de caducidad del reactivo Jaffé",
         ],
         "causas_deriva": [
-            "Degradación del ácido pícrico en método Jaffé (reactivo muy sensible a luz y calor)",
+            "Degradación del ácido pícrico en método Jaffé",
             "Deriva del calibrador entre lotes",
         ],
         "estabilidad_biorad": "Reconstituido: 5 días a 2-8 °C",
-        "interferencias": "Bilirrubina >10 mg/dL (↑ Jaffé), cefalosporinas (↑ Jaffé), acetona (↑ Jaffé), hemólisis (↑ leve)",
+        "interferencias": "Bilirrubina >10 mg/dL (↑ Jaffé), cefalosporinas (↑), acetona (↑)",
         "referencia": "Liquichek Chemistry Control Insert · Bio-Rad · CLSI EP6-A",
     },
-
-    # ── ENZIMAS ───────────────────────────────────────────────
     "ALT (Transaminasa)": {
         "producto":   "Liquichek Chemistry Control / Lyphochek Chemistry",
         "grupo":      "Enzimas hepáticas",
         "causas_comunes": [
-            "Temperatura de incubación incorrecta (las enzimas son muy sensibles a T°)",
-            "Degradación enzimática del control por exceso de ciclos de congelación/descongelación",
-            "Longitud de onda del fotómetro fuera de tolerancia (340 nm para métodos NADH)",
-            "Interferencia por hemólisis (ALT eritrocitaria libera actividad)",
+            "Temperatura de incubación incorrecta (muy sensible a T°)",
+            "Degradación enzimática por ciclos de congelación/descongelación",
+            "Longitud de onda del fotómetro fuera de tolerancia (340 nm para NADH)",
             "Reactivo de piridoxal fosfato (P-5-P) faltante o degradado",
         ],
         "acciones_1_3s": [
             "🔴 Verificar temperatura del baño termostatizado (37,0 °C ± 0,1 °C)",
             "Repetir con vial nuevo — la actividad enzimática es sensible al manejo",
             "Comprobar que el reactivo contiene piridoxal fosfato (P-5-P) activado",
-            "Verificar longitud de onda del espectrofotómetro con filtro de referencia",
-            "Revisar el tiempo de lag phase (preincubación) configurado en el analizador",
-            "Si el control de ALT falla junto con AST: sospechar problema de temperatura o reactivo",
+            "Verificar longitud de onda del espectrofotómetro",
+            "Si ALT y AST fallan simultáneamente: sospechar problema de temperatura",
             "Recalibrar si no se ha realizado en las últimas 24 h",
         ],
         "acciones_warn": [
             "Comprobar temperatura del módulo fotométrico",
-            "Verificar mezcla correcta del vial de control antes de pipetear",
-            "Revisar si hay burbujas en la cubeta de reacción",
+            "Verificar mezcla correcta del vial antes de pipetear",
             "Controlar la absorbancia del blanco de reactivo (no debe superar 1.5 AU)",
         ],
         "causas_deriva": [
-            "Deterioro progresivo del coenzima NADH en el reactivo (sensible a luz UV)",
-            "Fluctuación de temperatura del laboratorio que afecta al módulo termostatizado",
+            "Deterioro progresivo del coenzima NADH (sensible a luz UV)",
+            "Fluctuación de temperatura del módulo termostatizado",
             "Cambio de lote de reactivo sin ajuste de valores objetivo",
         ],
         "estabilidad_biorad": "Reconstituido: 5 días a 2-8 °C (la actividad enzimática decrece con el tiempo)",
-        "interferencias": "Hemólisis severa (↑), lipemia >500 mg/dL (↑ o ↓ según método), bilirrubina >20 mg/dL (↑ leve)",
+        "interferencias": "Hemólisis severa (↑), lipemia >500 mg/dL (variable), bilirrubina >20 mg/dL (↑ leve)",
         "referencia": "Liquichek Chemistry Control Insert · Bio-Rad · IFCC EP9 / CLSI EP15-A3",
     },
-
     "AST": {
         "producto":   "Liquichek Chemistry Control / Lyphochek Chemistry",
         "grupo":      "Enzimas hepáticas",
         "causas_comunes": [
-            "Hemólisis in vitro del control (AST eritrocitaria es 15× mayor que en plasma)",
-            "Temperatura incorrecta (37 °C es crítica — cada grado cambia la actividad ~7%)",
+            "Hemólisis in vitro (AST eritrocitaria es 15× mayor que en plasma)",
+            "Temperatura incorrecta (cada grado cambia la actividad ~7%)",
             "Piridoxal fosfato ausente o degradado en el reactivo",
-            "Interferencia con el malato deshidrogenasa (MDH) por oxalacetato espontáneo",
         ],
         "acciones_1_3s": [
-            "🔴 Inspeccionar visualmente el vial de control — ¿hay hemólisis visible (color rosado)?",
+            "🔴 Inspeccionar el vial — ¿hay hemólisis visible (color rosado)?",
             "Repetir con vial nuevo sin hemólisis",
             "Verificar temperatura del baño (37,0 °C ± 0,1 °C)",
-            "Comprobar activación con P-5-P del reactivo",
             "Recalibrar si ALT también falla simultáneamente",
         ],
         "acciones_warn": [
-            "Revisar manejo del vial (no agitar — mezclar por inversión suave)",
-            "Verificar la absorbancia inicial del blanco de reactivo",
-            "Comprobar fecha de caducidad del reactivo R2 (con MDH)",
+            "Revisar manejo del vial (mezclar por inversión suave)",
+            "Verificar absorbancia inicial del blanco de reactivo",
         ],
         "causas_deriva": [
-            "Degradación del NADH del reactivo por exposición a luz",
+            "Degradación del NADH por exposición a luz",
             "Acumulación de oxalacetato espontáneo en el reactivo R2 abierto",
         ],
         "estabilidad_biorad": "Reconstituido: 5 días a 2-8 °C",
         "interferencias": "Hemólisis (↑↑↑ efecto más marcado que en ALT), lipemia moderada (↑ leve)",
         "referencia": "Liquichek Chemistry Control Insert · Bio-Rad · IFCC / CLSI EP7-A2",
     },
-
     "GGT": {
         "producto":   "Liquichek Chemistry Control",
         "grupo":      "Enzimas hepáticas",
         "causas_comunes": [
-            "Temperatura de reacción incorrecta (sensible a variaciones de ±0,5 °C)",
-            "pH del reactivo fuera de rango (óptimo 7,9–8,2 para GGT)",
-            "Evaporación del substrato (L-gamma-glutamil-p-nitroanilida) por mal sellado",
+            "Temperatura de reacción incorrecta (sensible a ±0,5 °C)",
+            "pH del reactivo fuera de rango (óptimo 7,9–8,2)",
+            "Evaporación del substrato por mal sellado",
         ],
         "acciones_1_3s": [
             "🔴 Verificar temperatura del módulo fotométrico",
-            "Comprobar pH del tampón del reactivo si es posible",
+            "Comprobar pH del tampón del reactivo",
             "Repetir con vial nuevo y reactivo recién preparado",
-            "Recalibrar con calibrador trazable",
         ],
         "acciones_warn": [
-            "Revisar fecha de preparación del reactivo (vida en uso según fabricante del analizador)",
+            "Revisar fecha de preparación del reactivo",
             "Verificar ausencia de precipitados en el reactivo",
         ],
         "causas_deriva": [
@@ -315,309 +482,258 @@ BIORAD_KB = {
             "Fluctuación de pH por exposición al CO₂ ambiental",
         ],
         "estabilidad_biorad": "Reconstituido: 5 días a 2-8 °C",
-        "interferencias": "Hemólisis leve (efecto mínimo), lipemia >1000 mg/dL (↑)",
+        "interferencias": "Hemólisis leve (mínimo), lipemia >1000 mg/dL (↑)",
         "referencia": "Liquichek Chemistry Control Insert · Bio-Rad · ECCLS / DGKC",
     },
-
     "LDH": {
         "producto":   "Liquichek Chemistry Control / Lyphochek Chemistry",
         "grupo":      "Enzimas hepáticas",
         "causas_comunes": [
-            "Hemólisis (la LDH eritrocitaria es 160× mayor que en plasma — efecto enorme)",
-            "Isoenzimas de LDH: el control tiene perfil de isoenzimas fijo (LDH1-5 definido en insert)",
+            "Hemólisis (LDH eritrocitaria es 160× mayor que en plasma)",
             "Temperatura crítica: cada °C modifica la actividad ~8–10%",
-            "Inhibición por exceso de piruvato (en método inverso piruvato→lactato)",
+            "Inhibición por exceso de piruvato en método inverso",
         ],
         "acciones_1_3s": [
-            "🔴 Inspeccionar el vial — la hemólisis es la causa más frecuente de falsa elevación",
-            "Repetir con vial nuevo sin hemólisis (aspecto transparente/ligeramente amarillo)",
+            "🔴 Inspeccionar el vial — hemólisis es la causa más frecuente",
+            "Repetir con vial nuevo sin hemólisis",
             "Verificar temperatura del módulo (37,0 °C)",
-            "Comprobar dirección de la reacción configurada (L→P o P→L) coincide con el reactivo",
         ],
         "acciones_warn": [
             "Verificar que el reactivo no tiene precipitados (NADH precipita en frío)",
-            "Atemperar el reactivo a temperatura ambiente antes de su uso",
+            "Atemperar el reactivo antes de su uso",
         ],
         "causas_deriva": [
-            "Degradación del NADH por congelación repetida del reactivo",
+            "Degradación del NADH por congelación repetida",
             "Cambio de isoenzimas en el control por lote diferente",
         ],
         "estabilidad_biorad": "Reconstituido: 24 h a 2-8 °C (muy lábil — usar el mismo día)",
         "interferencias": "Hemólisis (↑↑↑ crítico), oxalato (↓), urea elevada (↓ leve)",
         "referencia": "Liquichek Chemistry Control Insert · Bio-Rad · IFCC/DGKC",
     },
-
-    # ── LÍPIDOS ───────────────────────────────────────────────
     "Colesterol": {
         "producto":   "Liquichek Lipid Control / Lyphochek Lipid",
         "grupo":      "Lípidos",
         "causas_comunes": [
-            "Diferencia de método: método enzimático CHOD-PAP vs método de Abell-Kendall (referencia)",
-            "Interferencia por bilirrubina >5 mg/dL (inhibe la peroxidasa en CHOD-PAP)",
-            "Efecto matriz del control (suero humano vs suero animal con lipoproteinasen distintas)",
-            "Calibrador no trazable a NIST SRM 1951c (material de referencia para colesterol)",
+            "Diferencia de método: CHOD-PAP vs Abell-Kendall",
+            "Interferencia por bilirrubina >5 mg/dL (inhibe la peroxidasa)",
+            "Calibrador no trazable a NIST SRM 1951c",
         ],
         "acciones_1_3s": [
-            "🔴 Verificar que los valores objetivo del insert corresponden a TU método/instrumento",
+            "🔴 Verificar que los valores del insert corresponden a TU método",
             "Repetir con vial nuevo del mismo lote",
             "Recalibrar con calibrador trazable a NIST SRM 1951c",
-            "Revisar el reactivo de colesterol (CHOD-PAP) — verificar absorbancias del blanco",
-            "Comprobar la temperatura de incubación (37 °C, 5–10 min según fabricante)",
         ],
         "acciones_warn": [
-            "Verificar la mezcla del vial (colesterol puede precipitar — mezclar por inversión suave)",
-            "Revisar si hay interferencia por bilirrubina en muestras de ese día",
-            "Confirmar que el blanco de reactivo está dentro del rango de linealidad del fotómetro",
+            "Verificar la mezcla del vial (colesterol puede precipitar)",
+            "Confirmar que el blanco de reactivo está dentro del rango de linealidad",
         ],
         "causas_deriva": [
-            "Degradación de la colesterol oxidasa (CHOD) en el reactivo por temperatura o luz",
-            "Cambio de lote de reactivo con diferente lote de enzima",
+            "Degradación de la colesterol oxidasa (CHOD) por temperatura o luz",
+            "Cambio de lote de reactivo",
         ],
-        "estabilidad_biorad": "Reconstituido: 7 días a 2-8 °C / estable a -20 °C hasta caducidad",
-        "interferencias": "Bilirrubina >5 mg/dL (↓ CHOD-PAP), hemólisis severa (↑ leve), ácido ascórbico (↓)",
-        "referencia": "Liquichek Lipid Control Insert · Bio-Rad · CDC/NHLBI Lipid Standardization Program",
+        "estabilidad_biorad": "Reconstituido: 7 días a 2-8 °C",
+        "interferencias": "Bilirrubina >5 mg/dL (↓ CHOD-PAP), hemólisis (↑ leve), ácido ascórbico (↓)",
+        "referencia": "Liquichek Lipid Control Insert · Bio-Rad · CDC/NHLBI",
     },
-
     "Triglicéridos": {
         "producto":   "Liquichek Lipid Control / Lyphochek Lipid",
         "grupo":      "Lípidos",
         "causas_comunes": [
-            "Glicerol endógeno libre en el control (algunos inserts incluyen corrección por glicerol)",
-            "Interferencia por hemólisis (la hemoglobina inhibe la peroxidasa)",
-            "Falta de ayuno simulado en el control (el control es postprandial por diseño)",
+            "Glicerol endógeno libre en el control",
+            "Interferencia por hemólisis (inhibe la peroxidasa)",
         ],
         "acciones_1_3s": [
-            "🔴 Verificar si el insert Bio-Rad especifica valores con o sin corrección por glicerol libre",
+            "🔴 Verificar si el insert especifica valores con/sin corrección por glicerol",
             "Repetir control con vial nuevo",
             "Recalibrar con calibrador trazable a NIST SRM 1951c",
-            "Comprobar el estado del reactivo GPO-PAP (lipasa, glicerol quinasa, GPO, peroxidasa)",
         ],
         "acciones_warn": [
-            "Verificar que el control se ha atemperado correctamente (no pipetear en frío)",
+            "Verificar que el control se ha atemperado correctamente",
             "Revisar el tiempo de incubación del reactivo",
         ],
         "causas_deriva": [
             "Degradación de la lipasa pancreática en el reactivo",
-            "Acumulación de glicerol libre en el vial de control abierto",
+            "Acumulación de glicerol libre en el vial abierto",
         ],
         "estabilidad_biorad": "Reconstituido: 7 días a 2-8 °C",
-        "interferencias": "Hemólisis (↓ peroxidasa), glicerol libre endógeno (↑), bilirrubina >5 mg/dL (↓)",
+        "interferencias": "Hemólisis (↓ peroxidasa), glicerol libre (↑), bilirrubina >5 mg/dL (↓)",
         "referencia": "Liquichek Lipid Control Insert · Bio-Rad",
     },
-
     "HDL-Colesterol": {
         "producto":   "Liquichek Lipid Control",
         "grupo":      "Lípidos",
         "causas_comunes": [
-            "Efecto matriz del control en métodos de precipitación directa (distintas lipoproteínas)",
-            "Interferencia de VLDL elevadas con los métodos de HDL directo homogéneo",
-            "Calibración incorrecta del método homogéneo directo (muy sensible a calibrador)",
+            "Efecto matriz del control en métodos de precipitación directa",
+            "Interferencia de VLDL elevadas con métodos homogéneos",
+            "Calibración incorrecta del método homogéneo directo",
         ],
         "acciones_1_3s": [
-            "🔴 Verificar los valores del insert Bio-Rad para TU método específico de HDL (directo/precipitación)",
+            "🔴 Verificar los valores del insert para TU método específico de HDL",
             "Repetir con vial nuevo",
             "Recalibrar — los métodos de HDL directo requieren calibración frecuente",
-            "Revisar si hay hipertrigliceridemia en muestras del día (interfiere en HDL directo)",
         ],
         "acciones_warn": [
-            "Confirmar que el tipo de método en el analizador coincide con los valores del insert",
+            "Confirmar que el tipo de método coincide con los valores del insert",
             "Verificar la integridad del blanco de HDL",
         ],
         "causas_deriva": [
-            "Cambio de lote de reactivo sin recalibración (los reactivos de HDL directo son sensibles)",
+            "Cambio de lote de reactivo sin recalibración",
         ],
         "estabilidad_biorad": "Reconstituido: 7 días a 2-8 °C",
         "interferencias": "Triglicéridos >400 mg/dL (↑ falso en directo), bilirrubina >10 mg/dL (↑)",
         "referencia": "Liquichek Lipid Control Insert · Bio-Rad · CDC Lipid Standardization",
     },
-
-    # ── INMUNOENSAYO / HORMONAL ───────────────────────────────
     "TSH": {
         "producto":   "Lyphochek Immunoassay Plus Control",
         "grupo":      "Inmunoensayo hormonal",
         "causas_comunes": [
-            "Anticuerpos heterófilos en el control (HAMA — anti-ratón) que interfieren en ensayos sandwich",
-            "Efecto gancho (hook effect) en niveles muy elevados de TSH (raro en controles normales)",
-            "Degradación de la hormona por ciclos de congelación/descongelación inadecuados",
-            "Variabilidad inter-ensayo elevada en plataformas de inmunoensayo (CV% típico 5-8%)",
-            "Reactividad cruzada con anticuerpos contra otras glicoproteínas (LH, FSH)",
+            "Anticuerpos heterófilos (HAMA) que interfieren en ensayos sandwich",
+            "Degradación por ciclos de congelación/descongelación inadecuados",
+            "Variabilidad inter-ensayo elevada (CV% típico 5-8%)",
+            "Reactividad cruzada con LH, FSH",
         ],
         "acciones_1_3s": [
-            "🔴 Verificar que el control Lyphochek está específicamente asignado a TU plataforma de inmunoensayo",
-            "Repetir con vial nuevo — los controles de inmunoensayo son más variables que los de bioquímica",
-            "Revisar el número de ciclos de congelación/descongelación del vial (máx. 3 según insert)",
-            "Comprobar la fecha de caducidad y condiciones de almacenamiento (-20 °C sin defrostar)",
+            "🔴 Verificar que el control está asignado a TU plataforma de inmunoensayo",
+            "Repetir con vial nuevo",
+            "Revisar número de ciclos de congelación/descongelación (máx. 3)",
             "Verificar calibración del inmunoensayo (los kits se calibran en lote)",
-            "Si persiste: ejecutar control de calidad interno del analizador (IQC procedural check)",
         ],
         "acciones_warn": [
-            "Revisar el número de lote del reactivo vs la calibración activa",
-            "Verificar que el cartucho/reactivo de TSH no está próximo a caducidad",
-            "Comprobar los volúmenes de muestra (pipeteo automático — verificar con agua destilada)",
+            "Revisar número de lote del reactivo vs calibración activa",
+            "Verificar que el cartucho/reactivo no está próximo a caducidad",
         ],
         "causas_deriva": [
-            "Cambio de lote de reactivo con diferente calibración (recalibrar obligatoriamente)",
-            "Degradación gradual del conjugado enzimático del inmunoensayo",
-            "Fluctuación de temperatura del módulo de incubación del analizador",
+            "Cambio de lote de reactivo (recalibrar obligatoriamente)",
+            "Degradación gradual del conjugado enzimático",
         ],
-        "estabilidad_biorad": "Liofilizado: según caducidad etiqueta / Reconstituido: 30 días a 2-8 °C (Lyphochek)",
-        "interferencias": "HAMA (↑↑), biotina >20 ng/mL en paciente (↓ ensayos tipo streptavidina), hemólisis severa (variable)",
+        "estabilidad_biorad": "Reconstituido: 30 días a 2-8 °C (Lyphochek)",
+        "interferencias": "HAMA (↑↑), biotina >20 ng/mL (↓), hemólisis severa (variable)",
         "referencia": "Lyphochek Immunoassay Plus Control Insert · Bio-Rad · CLSI EP15-A3",
     },
-
     "T4 Libre (FT4)": {
         "producto":   "Lyphochek Immunoassay Plus Control",
         "grupo":      "Inmunoensayo hormonal",
         "causas_comunes": [
-            "Interferencia por proteínas de unión (TBG, albúmina) que varían entre el control y pacientes",
-            "Dilución incorrecta del control liofilizado (agua ultrapura, volumen exacto)",
-            "Variabilidad entre plataformas de FT4 (los valores son método-dependientes)",
-            "Efecto de biotina en ensayos que usan estreptavidina",
+            "Interferencia por proteínas de unión (TBG, albúmina)",
+            "Dilución incorrecta del control liofilizado",
+            "Variabilidad entre plataformas (valores método-dependientes)",
         ],
         "acciones_1_3s": [
-            "🔴 Confirmar que los valores objetivo del insert son específicos para TU analizador",
-            "Repetir con vial nuevo reconstituido correctamente (agua ultrapura, temperatura ambiente)",
+            "🔴 Confirmar que los valores objetivo son específicos para TU analizador",
+            "Repetir con vial nuevo reconstituido correctamente",
             "Recalibrar el inmunoensayo de FT4",
-            "Verificar integridad del reactivo (aspecto, color, precipitados)",
         ],
         "acciones_warn": [
-            "Comprobar el volumen de reconstitución exacto según el insert Lyphochek",
-            "Verificar que el control se ha mezclado por inversión suave (no vortex)",
+            "Comprobar el volumen de reconstitución exacto",
+            "Verificar que se ha mezclado por inversión suave (no vortex)",
         ],
         "causas_deriva": [
-            "Cambio de lote de reactivo (FT4 es muy sensible a variaciones de calibración entre lotes)",
-            "Degradación de la hormona por temperatura de almacenamiento inadecuada",
+            "Cambio de lote de reactivo (FT4 muy sensible a variaciones de calibración)",
+            "Degradación por temperatura de almacenamiento inadecuada",
         ],
         "estabilidad_biorad": "Reconstituido: 30 días a 2-8 °C (Lyphochek)",
-        "interferencias": "Biotina >20 ng/mL (↓), HAMA (variable), heparina IV (↑ artefactual in vitro)",
+        "interferencias": "Biotina >20 ng/mL (↓), HAMA (variable), heparina IV (↑ artefactual)",
         "referencia": "Lyphochek Immunoassay Plus Control Insert · Bio-Rad",
     },
-
     "Hemoglobina": {
         "producto":   "Lyphochek Hematology / Liquichek Hematology",
         "grupo":      "Hematología",
         "causas_comunes": [
-            "Envejecimiento del control de hematología (los eritrocitos se fragmentan con el tiempo)",
-            "Temperatura de almacenamiento incorrecta (los controles de hematología son muy sensibles a T°)",
-            "Variabilidad entre analizadores de hematología (parámetros no armonizados globalmente)",
-            "Calibración del analizador desactualizada (recalibrar según protocolo del fabricante)",
+            "Envejecimiento del control (eritrocitos se fragmentan con el tiempo)",
+            "Temperatura de almacenamiento incorrecta",
+            "Variabilidad entre analizadores de hematología",
         ],
         "acciones_1_3s": [
-            "🔴 Verificar la fecha de caducidad DEL VIAL ABIERTO (típicamente 5-7 días según insert Bio-Rad)",
+            "🔴 Verificar la fecha de caducidad del vial abierto (5-7 días según insert)",
             "Repetir con vial nuevo dentro de fecha",
-            "Ejecutar el ciclo de QC interno del analizador (autoverificación del hardware)",
-            "Recalibrar con material de referencia del fabricante del analizador (no con Lyphochek)",
-            "Si el fallo afecta a múltiples parámetros: sospechar problema del analizador (óptica, hidráulica)",
+            "Recalibrar con material de referencia del fabricante del analizador",
         ],
         "acciones_warn": [
-            "Verificar temperatura de almacenamiento del control (2-8 °C, NO congelar)",
-            "Comprobar que el control se ha invertido suavemente 8-10 veces antes de analizar",
-            "Revisar el tiempo de estabilización del control tras sacar de nevera (15 min a T° ambiente)",
+            "Verificar temperatura de almacenamiento (2-8 °C, NO congelar)",
+            "Invertir suavemente 8-10 veces antes de analizar",
+            "Estabilización de 15 min a T° ambiente tras sacar de nevera",
         ],
         "causas_deriva": [
             "Fragmentación progresiva de eritrocitos en el control envejecido",
-            "Variación de la calibración del canal de hemoglobina (HGB) por suciedad en la cubeta",
+            "Variación del canal HGB por suciedad en la cubeta",
         ],
-        "estabilidad_biorad": "Abierto: 5-7 días a 2-8 °C / No congelar / Descartar si hay hemólisis visible",
-        "interferencias": "Lipemia severa (↑ HGB fotométrico), crioglobulinas (↑ leucocitos falso), ictericia severa (↑ HGB)",
+        "estabilidad_biorad": "Abierto: 5-7 días a 2-8 °C / No congelar",
+        "interferencias": "Lipemia severa (↑ HGB fotométrico), ictericia severa (↑ HGB)",
         "referencia": "Lyphochek Hematology Control Insert · Bio-Rad · CLSI H26-A2",
     },
-
     "Calcio": {
         "producto":   "Liquichek Chemistry Control",
         "grupo":      "Bioquímica básica",
         "causas_comunes": [
-            "Interferencia por EDTA (quelante del calcio — tubos morados son incompatibles)",
-            "pH del control fuera de rango (el calcio iónico varía con el pH)",
+            "Interferencia por EDTA (quelante del calcio)",
+            "pH del control fuera de rango",
             "Interferencia por magnesio elevado en método de o-cresolftaleína",
             "Evaporación del vial (concentra el calcio)",
         ],
         "acciones_1_3s": [
-            "🔴 Descartar contaminación con EDTA (tubos morados o capilares EDTA)",
+            "🔴 Descartar contaminación con EDTA",
             "Repetir con vial nuevo",
-            "Verificar el pH del reactivo de o-cresolftaleína (sensible al pH)",
+            "Verificar el pH del reactivo de o-cresolftaleína",
             "Recalibrar con calibrador trazable a SRM NIST 956c",
-            "Comprobar el blanco de reactivo (la o-cresolftaleína cambia de color con el pH ambiental)",
         ],
         "acciones_warn": [
             "Verificar tiempo de apertura del vial de control",
             "Comprobar temperatura de incubación (37 °C)",
         ],
         "causas_deriva": [
-            "Degradación del indicador o-cresolftaleína por pH o temperatura",
+            "Degradación del indicador o-cresolftaleína",
             "Cambio de lote de reactivo con diferente concentración de indicador",
         ],
         "estabilidad_biorad": "Reconstituido: 5 días a 2-8 °C",
-        "interferencias": "EDTA (↓↓↓ crítico), magnesio elevado (↑ leve en o-cresolftaleína), hemólisis (↑ leve)",
+        "interferencias": "EDTA (↓↓↓ crítico), magnesio elevado (↑ leve), hemólisis (↑ leve)",
         "referencia": "Liquichek Chemistry Control Insert · Bio-Rad · CLSI EP7-A2",
     },
 }
 
-# Grupos de analitos para búsqueda por similitud
 GRUPOS_ANALITICOS = {
-    "Bioquímica básica": ["Glucosa", "Potasio (K+)", "Sodio", "Creatinina", "Calcio"],
-    "Enzimas hepáticas": ["ALT (Transaminasa)", "AST", "GGT", "LDH"],
-    "Lípidos":           ["Colesterol", "Triglicéridos", "HDL-Colesterol"],
-    "Inmunoensayo hormonal": ["TSH", "T4 Libre (FT4)"],
-    "Hematología":       ["Hemoglobina"],
+    "Bioquímica básica":     ["Glucosa","Potasio (K+)","Sodio","Creatinina","Calcio"],
+    "Enzimas hepáticas":     ["ALT (Transaminasa)","AST","GGT","LDH"],
+    "Lípidos":               ["Colesterol","Triglicéridos","HDL-Colesterol"],
+    "Inmunoensayo hormonal": ["TSH","T4 Libre (FT4)"],
+    "Hematología":           ["Hemoglobina"],
 }
 
-def buscar_kb(analito: str, estado: str) -> dict | None:
-    """Busca en la KB por nombre exacto o por similitud parcial."""
-    if analito in BIORAD_KB:
-        return BIORAD_KB[analito]
-    # Búsqueda parcial (ej: "ALT" → "ALT (Transaminasa)")
+def buscar_kb(analito, estado):
+    if analito in BIORAD_KB: return BIORAD_KB[analito]
     an_norm = analito.lower()
     for key in BIORAD_KB:
-        if an_norm in key.lower() or key.lower() in an_norm:
-            return BIORAD_KB[key]
+        if an_norm in key.lower() or key.lower() in an_norm: return BIORAD_KB[key]
     return None
 
-def render_kb_panel(analito: str, estado: str, regla: str, nivel: str):
-    """Renderiza el panel de conocimiento Bio-Rad para un analito con alarma."""
+def render_kb_panel(analito, estado, regla, nivel):
     kb = buscar_kb(analito, estado)
     nivel_label = NIVELES.get(nivel, NIVELES["N"])["label"]
-    card_class  = "biorad-card-red" if estado == "Rojo" else "biorad-card-amber" if estado == "Ámbar" else "biorad-card"
-
+    card_class  = "biorad-card-red" if estado=="Rojo" else "biorad-card-amber" if estado=="Ámbar" else "biorad-card"
     if kb is None:
         st.markdown(
-            f'<div class="{card_class}">'
-            f'<b>📋 Bio-Rad KB:</b> No hay ficha específica para <b>{analito}</b> en la base de conocimiento. '
-            f'Consulta el insert de tu lote en <a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet</a>.'
-            f'</div>', unsafe_allow_html=True)
-        return
-
-    ico = "🔴" if estado == "Rojo" else "🟡"
+            f'<div class="{card_class}"><b>📋 Bio-Rad KB:</b> No hay ficha específica para <b>{analito}</b>. '
+            f'Consulta el insert en <a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet</a>.</div>',
+            unsafe_allow_html=True); return
+    ico = "🔴" if estado=="Rojo" else "🟡"
     st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
-    st.markdown(
-        f"#### {ico} Guía Bio-Rad — **{analito}** · {nivel_label} · Regla `{regla}`\n"
-        f"*Producto: {kb['producto']} · Grupo: {kb['grupo']}*")
-
+    st.markdown(f"#### {ico} Guía Bio-Rad — **{analito}** · {nivel_label} · Regla `{regla}`\n*Producto: {kb['producto']} · Grupo: {kb['grupo']}*")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**🔍 Causas más probables:**")
-        for c in kb["causas_comunes"]:
-            st.markdown(f"- {c}")
-
-        if estado == "Ámbar" and ("10_x" in regla or "4_1s" in regla or "2_2s" in regla):
-            st.markdown("**📉 Causas de deriva/tendencia:**")
-            for c in kb.get("causas_deriva", []):
-                st.markdown(f"- {c}")
-
+        for c in kb["causas_comunes"]: st.markdown(f"- {c}")
+        if estado=="Ámbar" and any(r in regla for r in ["10_x","4_1s","2_2s"]):
+            st.markdown("**📉 Causas de deriva:**")
+            for c in kb.get("causas_deriva",[]): st.markdown(f"- {c}")
     with col2:
-        acciones = kb["acciones_1_3s"] if estado == "Rojo" else kb["acciones_warn"]
+        acciones = kb["acciones_1_3s"] if estado=="Rojo" else kb["acciones_warn"]
         st.markdown("**✅ Acciones correctivas:**")
-        for a in acciones:
-            st.markdown(f"- {a}")
-
+        for a in acciones: st.markdown(f"- {a}")
     st.markdown(
-        f"**⚠️ Interferencias conocidas:** {kb['interferencias']}\n\n"
-        f"**🧪 Estabilidad Bio-Rad:** {kb['estabilidad_biorad']}\n\n"
-        f"**📖 Referencia:** {kb['referencia']}"
-    )
+        f"**⚠️ Interferencias:** {kb['interferencias']}\n\n"
+        f"**🧪 Estabilidad:** {kb['estabilidad_biorad']}\n\n"
+        f"**📖 Referencia:** {kb['referencia']}")
     st.markdown(
-        f'<small>🔗 Consulta el insert de tu lote específico: '
-        f'<a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet Bio-Rad</a></small>',
+        f'<small>🔗 <a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet Bio-Rad</a></small>',
         unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -626,12 +742,12 @@ def render_kb_panel(analito: str, estado: str, regla: str, nivel: str):
 #  CONSTANTES DE NIVELES
 # ==============================================================
 NIVELES = {
-    "N":  {"label": "Normal",          "pill": "nivel-N",  "icon": "🔵"},
-    "PB": {"label": "Patológico Bajo",  "pill": "nivel-PB", "icon": "🟡"},
-    "PA": {"label": "Patológico Alto",  "pill": "nivel-PA", "icon": "🔴"},
+    "N":  {"label":"Normal",         "pill":"nivel-N",  "icon":"🔵"},
+    "PB": {"label":"Patológico Bajo", "pill":"nivel-PB", "icon":"🟡"},
+    "PA": {"label":"Patológico Alto", "pill":"nivel-PA", "icon":"🔴"},
 }
 
-def nivel_badge(codigo: str) -> str:
+def nivel_badge(codigo):
     cfg = NIVELES.get(codigo, NIVELES["N"])
     return f'<span class="nivel-pill {cfg["pill"]}">{cfg["icon"]} {cfg["label"]}</span>'
 
@@ -645,26 +761,22 @@ GEMINI_SYSTEM = (
     "Usas controles Bio-Rad (Liquichek y Lyphochek). "
     "REGLA ABSOLUTA: Cada respuesta DEBE incluir los valores numéricos reales del laboratorio "
     "(valor medido, media, SD, Z-Score, estado, regla violada, nivel de control). "
-    "Cuando hay una alarma, menciona las causas probables según el insert Bio-Rad y las acciones correctivas. "
+    "Cuando hay alarma, menciona causas probables según el insert Bio-Rad y acciones correctivas. "
     "NUNCA respondas de forma genérica. Respondes en español, de forma concisa y técnica. "
-    "Usas Markdown para mayor claridad. Fórmula Z-Score: Z = (x − μ) / σ."
+    "Usas Markdown. Fórmula Z-Score: Z = (x − μ) / σ."
 )
-GEMINI_CFG = {"temperature": 0.2, "max_output_tokens": 2048, "top_p": 0.85}
+GEMINI_CFG = {"temperature":0.2,"max_output_tokens":2048,"top_p":0.85}
 
-def get_api_key() -> str:
-    return (
-        st.secrets.get("gemini", {}).get("api_key") or
-        st.secrets.get("GEMINI_API_KEY", "") or
-        os.environ.get("GEMINI_API_KEY", "")
-    )
+def get_api_key():
+    return (st.secrets.get("gemini",{}).get("api_key") or
+            st.secrets.get("GEMINI_API_KEY","") or os.environ.get("GEMINI_API_KEY",""))
 
 
 # ==============================================================
 #  2. AUTENTICACIÓN
 # ==============================================================
-def get_credentials() -> tuple[str, str]:
-    try:
-        return st.secrets["auth"]["user"], st.secrets["auth"]["password"]
+def get_credentials():
+    try: return st.secrets["auth"]["user"], st.secrets["auth"]["password"]
     except KeyError:
         st.error("⚠️ Crea `.streamlit/secrets.toml` con [auth] user y password."); st.stop()
 
@@ -673,21 +785,20 @@ VALID_USER, VALID_PASS = get_credentials()
 def render_login():
     st.markdown("""<div class="login-card">
         <div style="font-size:3rem;text-align:center">🔬</div>
-        <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#0066CC">AIQC</div>
-        <div style="text-align:center;font-size:.86rem;color:#6C757D;margin-bottom:28px">
-            Artificial Intelligence for Quality Control · v4.8
+        <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#1A6FC4;margin-bottom:4px">AIQC</div>
+        <div style="text-align:center;font-size:.86rem;color:#64748B;margin-bottom:28px">
+            Artificial Intelligence for Quality Control · v4.9
         </div></div>""", unsafe_allow_html=True)
-    _, mid, _ = st.columns([1, 1.8, 1])
+    _, mid, _ = st.columns([1,1.8,1])
     with mid:
         st.markdown("<br>", unsafe_allow_html=True)
         user = st.text_input("Usuario", placeholder="admin", key="_u")
         pwd  = st.text_input("Contraseña", type="password", placeholder="••••••", key="_p")
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Acceder al sistema →", use_container_width=True, type="primary"):
-            if user == VALID_USER and pwd == VALID_PASS:
-                st.session_state["auth"] = True; st.rerun()
-            else:
-                st.error("Credenciales incorrectas.")
+            if user==VALID_USER and pwd==VALID_PASS:
+                st.session_state["auth"]=True; st.rerun()
+            else: st.error("Credenciales incorrectas.")
 
 if not st.session_state.get("auth"):
     render_login(); st.stop()
@@ -703,12 +814,11 @@ def init_db():
     con.execute("CREATE TABLE IF NOT EXISTS acciones (clave TEXT PRIMARY KEY, hecha INTEGER DEFAULT 0, ts TEXT)")
     con.commit(); return con
 
-def load_acciones(con): return {r[0]: bool(r[1]) for r in con.execute("SELECT clave,hecha FROM acciones").fetchall()}
-def save_accion(con, clave, hecha):
-    con.execute("INSERT OR REPLACE INTO acciones VALUES (?,?,datetime('now'))", (clave, int(hecha))); con.commit()
+def load_acciones(con): return {r[0]:bool(r[1]) for r in con.execute("SELECT clave,hecha FROM acciones").fetchall()}
+def save_accion(con,clave,hecha):
+    con.execute("INSERT OR REPLACE INTO acciones VALUES (?,?,datetime('now'))",(clave,int(hecha))); con.commit()
 
-if "db_con" not in st.session_state:
-    st.session_state["db_con"] = init_db()
+if "db_con" not in st.session_state: st.session_state["db_con"]=init_db()
 db_con = st.session_state["db_con"]
 
 
@@ -721,14 +831,14 @@ NIVELES_DEMO = {
 }
 
 @st.cache_data(show_spinner=False)
-def build_demo(ref_date: str = "") -> pd.DataFrame:
+def build_demo(ref_date=""):
     np.random.seed(2026)
-    today = pd.Timestamp(ref_date).replace(hour=0, minute=0, second=0, microsecond=0)
-    dates = [today - timedelta(days=29-i) for i in range(30)]
+    today = pd.Timestamp(ref_date).replace(hour=0,minute=0,second=0,microsecond=0)
+    dates = [today-timedelta(days=29-i) for i in range(30)]
     rows  = []
-    for analito, niveles in NIVELES_DEMO.items():
-        for nivel_cod, (media, sd) in niveles.items():
-            for i, d in enumerate(dates):
+    for analito,niveles in NIVELES_DEMO.items():
+        for nivel_cod,(media,sd) in niveles.items():
+            for i,d in enumerate(dates):
                 drift = 2.5*(i-24)*0.65 if analito=="ALT (Transaminasa)" and nivel_cod=="PA" and i>=25 else 0.0
                 rows.append({"Fecha":d,"Analito":analito,"Nivel":nivel_cod,
                               "Valor":round(np.random.normal(media+drift,sd*0.85),3),
@@ -753,54 +863,50 @@ def _norm(s):
     return s.lower().strip().translate(str.maketrans("áéíóúàèìòùäëïöüÁÉÍÓÚ","aeiouaeiouaeiouAEIOU"))
 
 def normalizar_df(df):
-    df_n = {_norm(c): c for c in df.columns}
-    rename = {}
-    for interno, sins in COL_SYNONYMS.items():
+    df_n={_norm(c):c for c in df.columns}; rename={}
+    for interno,sins in COL_SYNONYMS.items():
         for s in sins:
-            if s in df_n: rename[df_n[s]] = interno; break
+            if s in df_n: rename[df_n[s]]=interno; break
         if interno not in rename.values():
-            for cn, co in df_n.items():
-                if any(s in cn or cn in s for s in sins): rename[co] = interno; break
-    df2 = df.rename(columns=rename)
-    obligatorias = ["Fecha","Analito","Valor","Media_Objetivo","SD_Objetivo"]
-    faltan = [c for c in obligatorias if c not in df2.columns]
+            for cn,co in df_n.items():
+                if any(s in cn or cn in s for s in sins): rename[co]=interno; break
+    df2=df.rename(columns=rename)
+    obligatorias=["Fecha","Analito","Valor","Media_Objetivo","SD_Objetivo"]
+    faltan=[c for c in obligatorias if c not in df2.columns]
     if faltan: return None, f"Columnas no encontradas: {', '.join(faltan)}."
-    if "Nivel" not in df2.columns: df2["Nivel"] = "N"
-    if "Lote"  not in df2.columns: df2["Lote"]  = "N/A"
-    df2["Fecha"]          = pd.to_datetime(df2["Fecha"], dayfirst=True, errors="coerce")
-    df2["Valor"]          = pd.to_numeric(df2["Valor"],         errors="coerce")
-    df2["Media_Objetivo"] = pd.to_numeric(df2["Media_Objetivo"], errors="coerce")
-    df2["SD_Objetivo"]    = pd.to_numeric(df2["SD_Objetivo"],    errors="coerce")
-    nivel_map = {
-        "n":"N","normal":"N","nivel 1":"N","nivel1":"N","n1":"N","1":"N",
-        "pb":"PB","patologico bajo":"PB","bajo":"PB","nivel 2":"PB","n2":"PB","2":"PB",
-        "pa":"PA","patologico alto":"PA","alto":"PA","nivel 3":"PA","n3":"PA","3":"PA",
-    }
-    df2["Nivel"] = df2["Nivel"].astype(str).str.lower().str.strip().map(lambda x: nivel_map.get(x,"N"))
-    df2 = df2.dropna(subset=obligatorias)
-    if df2.empty: return None, "Sin filas válidas."
-    return df2[obligatorias+["Nivel","Lote"]].reset_index(drop=True), ""
+    if "Nivel" not in df2.columns: df2["Nivel"]="N"
+    if "Lote"  not in df2.columns: df2["Lote"]="N/A"
+    df2["Fecha"]=pd.to_datetime(df2["Fecha"],dayfirst=True,errors="coerce")
+    df2["Valor"]=pd.to_numeric(df2["Valor"],errors="coerce")
+    df2["Media_Objetivo"]=pd.to_numeric(df2["Media_Objetivo"],errors="coerce")
+    df2["SD_Objetivo"]=pd.to_numeric(df2["SD_Objetivo"],errors="coerce")
+    nivel_map={"n":"N","normal":"N","nivel 1":"N","nivel1":"N","n1":"N","1":"N",
+               "pb":"PB","patologico bajo":"PB","bajo":"PB","nivel 2":"PB","n2":"PB","2":"PB",
+               "pa":"PA","patologico alto":"PA","alto":"PA","nivel 3":"PA","n3":"PA","3":"PA"}
+    df2["Nivel"]=df2["Nivel"].astype(str).str.lower().str.strip().map(lambda x:nivel_map.get(x,"N"))
+    df2=df2.dropna(subset=obligatorias)
+    if df2.empty: return None,"Sin filas válidas."
+    return df2[obligatorias+["Nivel","Lote"]].reset_index(drop=True),""
 
 def leer_archivo(uploaded):
-    name = uploaded.name.lower()
+    name=uploaded.name.lower()
     try:
-        raw = pd.read_csv(uploaded, sep=None, engine="python") if name.endswith(".csv") else pd.read_excel(uploaded)
+        raw=pd.read_csv(uploaded,sep=None,engine="python") if name.endswith(".csv") else pd.read_excel(uploaded)
         return normalizar_df(raw)
-    except Exception as e:
-        return None, f"Error: {e}"
+    except Exception as e: return None,f"Error: {e}"
 
 
 # ==============================================================
 #  6. WESTGARD
 # ==============================================================
-REGLAS_DESC = "1_3s: ±3SD → Rojo | 2_2s: 2 consec ±2SD → Rojo | 4_1s: 4 consec ±1SD → Ámbar | 10_x: 10 consec mismo lado → Ámbar"
+REGLAS_DESC="1_3s: ±3SD → Rojo | 2_2s: 2 consec ±2SD → Rojo | 4_1s: 4 consec ±1SD → Ámbar | 10_x: 10 consec mismo lado → Ámbar"
 
 def evaluar_westgard(serie):
-    df = serie.copy().sort_values("Fecha").reset_index(drop=True)
-    df["Z_Score"] = (df["Valor"]-df["Media_Objetivo"])/df["SD_Objetivo"]
+    df=serie.copy().sort_values("Fecha").reset_index(drop=True)
+    df["Z_Score"]=(df["Valor"]-df["Media_Objetivo"])/df["SD_Objetivo"]
     df["Regla_Violada"]="—"; df["Score_Riesgo"]=0; df["Estado"]="Verde"
     for i in range(len(df)):
-        z = df.at[i,"Z_Score"]
+        z=df.at[i,"Z_Score"]
         if abs(z)>=3.0: df.at[i,"Regla_Violada"]="1_3s"; df.at[i,"Score_Riesgo"]=90; df.at[i,"Estado"]="Rojo"; continue
         if i>=1:
             zp=df.at[i-1,"Z_Score"]
@@ -836,18 +942,18 @@ TEA_CLIA = {
     "TSH":(25.0,"mIU/L","CLIA"),"T4 Libre (FT4)":(20.0,"ng/dL","CLIA"),
     "AST":(20.0,"U/L","CLIA"),"GGT":(20.0,"U/L","CLIA"),"LDH":(20.0,"U/L","CLIA"),
 }
-TEA_DEFAULT = 15.0
+TEA_DEFAULT=15.0
 
-def calcular_sigma(df_analito, tea_pct):
+def calcular_sigma(df_analito,tea_pct):
     if df_analito.empty: return {}
     media=df_analito["Media_Objetivo"].iloc[0]; sd=df_analito["SD_Objetivo"].iloc[0]; vals=df_analito["Valor"]
     cv_pct=(sd/media)*100 if media!=0 else 0
     sesgo_pct=abs((vals.mean()-media)/media)*100 if media!=0 else 0
     sigma=(tea_pct-sesgo_pct)/cv_pct if cv_pct>0 else 0
-    if sigma>=6:   cat="🏆 Clase Mundial"; color="#198754"
-    elif sigma>=4: cat="✅ Buena calidad"; color="#0066CC"
-    elif sigma>=3: cat="⚠️ Aceptable";    color="#FD7E14"
-    else:          cat="🔴 Revisar método";color="#DC3545"
+    if sigma>=6:   cat="🏆 Clase Mundial"; color="#0D9E6E"
+    elif sigma>=4: cat="✅ Buena calidad"; color="#1A6FC4"
+    elif sigma>=3: cat="⚠️ Aceptable";    color="#F59E0B"
+    else:          cat="🔴 Revisar método";color="#E53E3E"
     return {"sigma":round(sigma,2),"cv_pct":round(cv_pct,2),"sesgo_pct":round(sesgo_pct,2),
             "tea_pct":tea_pct,"categoria":cat,"color":color,"media":round(media,3),"sd":round(sd,4),"n":len(vals)}
 
@@ -855,37 +961,38 @@ def calcular_sigma(df_analito, tea_pct):
 # ==============================================================
 #  8. LEVEY-JENNINGS
 # ==============================================================
-def build_lj_figure(df_series, analito, nivel):
+def build_lj_figure(df_series,analito,nivel):
     u=df_series.iloc[-1]; m=u["Media_Objetivo"]; sd=u["SD_Objetivo"]
     nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
     fig=go.Figure()
-    for y0,y1,col in [(m+2*sd,m+3*sd,"rgba(220,53,69,.10)"),(m-3*sd,m-2*sd,"rgba(220,53,69,.10)"),
-                       (m+sd,m+2*sd,"rgba(255,193,7,.08)"),(m-2*sd,m-sd,"rgba(255,193,7,.08)"),
-                       (m-sd,m+sd,"rgba(25,135,84,.06)")]:
+    for y0,y1,col in [(m+2*sd,m+3*sd,"rgba(229,62,62,.10)"),(m-3*sd,m-2*sd,"rgba(229,62,62,.10)"),
+                       (m+sd,m+2*sd,"rgba(245,158,11,.08)"),(m-2*sd,m-sd,"rgba(245,158,11,.08)"),
+                       (m-sd,m+sd,"rgba(13,158,110,.06)")]:
         fig.add_hrect(y0=y0,y1=y1,fillcolor=col,line_width=0)
     for y_v,color,width,dash,name in [
-        (m,"#198754",2.0,"solid","Media"),(m+sd,"#ADB5BD",1.0,"dash","+1 SD"),(m-sd,"#ADB5BD",1.0,"dash","−1 SD"),
-        (m+2*sd,"#FD7E14",1.4,"dash","+2 SD"),(m-2*sd,"#FD7E14",1.4,"dash","−2 SD"),
-        (m+3*sd,"#DC3545",1.8,"dot","+3 SD"),(m-3*sd,"#DC3545",1.8,"dot","−3 SD"),
+        (m,"#0D9E6E",2.0,"solid","Media"),(m+sd,"#94A3B8",1.0,"dash","+1 SD"),(m-sd,"#94A3B8",1.0,"dash","−1 SD"),
+        (m+2*sd,"#F59E0B",1.4,"dash","+2 SD"),(m-2*sd,"#F59E0B",1.4,"dash","−2 SD"),
+        (m+3*sd,"#E53E3E",1.8,"dot","+3 SD"),(m-3*sd,"#E53E3E",1.8,"dot","−3 SD"),
     ]:
         fig.add_hline(y=y_v,line_color=color,line_width=width,line_dash=dash,
                       annotation_text=name,annotation_position="right",
-                      annotation_font=dict(color=color,size=10,family="Arial"))
+                      annotation_font=dict(color=color,size=10,family="Inter"))
     fig.add_trace(go.Scatter(x=df_series["Fecha"],y=df_series["Valor"],
-                             mode="lines",line=dict(color="#CED4DA",width=1.5),showlegend=False,hoverinfo="skip"))
-    for estado,color in [("Verde","#198754"),("Ámbar","#FD7E14"),("Rojo","#DC3545")]:
+                             mode="lines",line=dict(color="#CBD5E1",width=1.5),showlegend=False,hoverinfo="skip"))
+    for estado,color in [("Verde","#0D9E6E"),("Ámbar","#F59E0B"),("Rojo","#E53E3E")]:
         sub=df_series[df_series["Estado"]==estado]
         if sub.empty: continue
         fig.add_trace(go.Scatter(x=sub["Fecha"],y=sub["Valor"],mode="markers",name=estado,
                                  marker=dict(size=9,color=color,line=dict(color="#FFFFFF",width=1.5))))
     fig.update_layout(
         template="plotly_white",
-        title=dict(text=f"Levey-Jennings — {analito} · Nivel: {nivel_label}",
-                   font=dict(size=13,color="#212529",family="Arial")),
-        paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",font=dict(color="#495057",family="Arial"),
+        title=dict(text=f"Levey-Jennings — {analito} · {nivel_label}",
+                   font=dict(size=13,color="#1C2B3A",family="Inter")),
+        paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",
+        font=dict(color="#475569",family="Inter"),
         legend=dict(orientation="h",y=1.08,x=1,xanchor="right"),
-        xaxis=dict(gridcolor="#F1F3F5",linecolor="#DEE2E6",tickformat="%d %b",title="Fecha"),
-        yaxis=dict(gridcolor="#F1F3F5",linecolor="#DEE2E6",title="Valor"),
+        xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",tickformat="%d %b",title="Fecha"),
+        yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="Valor"),
         height=380,width=760,margin=dict(l=10,r=110,t=55,b=40))
     return fig
 
@@ -897,9 +1004,9 @@ def fig_to_png_bytes(fig):
 # ==============================================================
 #  9. PDF
 # ==============================================================
-def generar_pdf(df_all, analitos, fuente):
+def generar_pdf(df_all,analitos,fuente):
     pdf=FPDF(); pdf.set_auto_page_break(auto=True,margin=15); pdf.add_page()
-    pdf.set_fill_color(0,102,204); pdf.rect(0,0,210,36,"F")
+    pdf.set_fill_color(26,111,196); pdf.rect(0,0,210,36,"F")
     pdf.set_font("Helvetica","B",18); pdf.set_text_color(255,255,255); pdf.ln(8)
     pdf.cell(0,10,"AIQC – Informe de Incidencias de Calidad",ln=True,align="C")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(220,235,255)
@@ -908,9 +1015,9 @@ def generar_pdf(df_all, analitos, fuente):
     niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
 
     def sec(txt):
-        pdf.set_font("Helvetica","B",12); pdf.set_text_color(0,102,204)
+        pdf.set_font("Helvetica","B",12); pdf.set_text_color(26,111,196)
         pdf.cell(0,8,txt,ln=True)
-        pdf.set_draw_color(0,102,204); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(3)
+        pdf.set_draw_color(13,158,110); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(3)
 
     sec("1. Resumen Ejecutivo por Nivel de Control")
     for niv in niveles_disponibles:
@@ -919,17 +1026,17 @@ def generar_pdf(df_all, analitos, fuente):
         if df_ev.empty: continue
         total=len(df_ev); rojos=int((df_ev["Estado"]=="Rojo").sum())
         ambar=int((df_ev["Estado"]=="Ámbar").sum()); ok=int((df_ev["Estado"]=="Verde").sum())
-        pdf.set_font("Helvetica","B",10); pdf.set_text_color(33,37,41)
+        pdf.set_font("Helvetica","B",10); pdf.set_text_color(28,43,58)
         pdf.cell(0,7,f"Nivel: {NIVELES.get(niv,NIVELES['N'])['label']}",ln=True)
         pdf.set_font("Helvetica","",9)
-        pdf.cell(0,6,f"  Total: {total}  |  Verde: {ok} ({100*ok//total if total else 0}%)  |  Ámbar: {ambar}  |  Rojo: {rojos}",ln=True)
+        pdf.cell(0,6,f"  Total: {total}  |  Verde: {ok} ({100*ok//total if total else 0}%)  |  Ambar: {ambar}  |  Rojo: {rojos}",ln=True)
         pdf.ln(2)
 
     sec("2. Estado por Analito y Nivel  [Z = (x - media) / SD]")
     pdf.set_font("Helvetica","",8); pdf.set_text_color(80,80,80)
     pdf.cell(0,5,REGLAS_DESC,ln=True); pdf.ln(2)
     col_w=[40,26,20,22,22,26,22,20]; hdrs=["Analito","Nivel","Valor","Z-Score","Score","Regla","Estado","N pts"]
-    pdf.set_fill_color(240,242,245); pdf.set_text_color(73,80,87); pdf.set_font("Helvetica","B",8)
+    pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
     for w,h in zip(col_w,hdrs): pdf.cell(w,8,h,border=1,fill=True)
     pdf.ln()
     for an in analitos:
@@ -937,9 +1044,9 @@ def generar_pdf(df_all, analitos, fuente):
             sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
             if sub.empty: continue
             u=sub.iloc[-1]; niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
-            if u["Estado"]=="Rojo":    pdf.set_fill_color(252,232,232); pdf.set_text_color(155,28,28)
-            elif u["Estado"]=="Ámbar": pdf.set_fill_color(255,243,205); pdf.set_text_color(133,100,4)
-            else:                       pdf.set_fill_color(209,247,231); pdf.set_text_color(10,102,64)
+            if u["Estado"]=="Rojo":    pdf.set_fill_color(254,226,226); pdf.set_text_color(153,27,27)
+            elif u["Estado"]=="Ámbar": pdf.set_fill_color(254,243,199); pdf.set_text_color(146,64,14)
+            else:                       pdf.set_fill_color(209,250,229); pdf.set_text_color(6,95,70)
             pdf.set_font("Helvetica","",8)
             for w,v in zip(col_w,[an[:22],niv_label[:14],str(u["Valor"]),f"{u['Z_Score']:+.2f}",
                                    f"{int(u['Score_Riesgo'])}/100",u["Regla_Violada"],u["Estado"],str(len(sub))]):
@@ -947,7 +1054,7 @@ def generar_pdf(df_all, analitos, fuente):
             pdf.ln()
     pdf.ln(5)
 
-    sec("3. Gráficos Levey-Jennings por Analito y Nivel")
+    sec("3. Graficos Levey-Jennings por Analito y Nivel")
     for an in analitos:
         for niv in niveles_disponibles:
             sub_ev=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
@@ -957,56 +1064,52 @@ def generar_pdf(df_all, analitos, fuente):
             if png:
                 tmp=f"/tmp/lj_{an.replace(' ','_').replace('(','').replace(')','_')}_{niv}.png"
                 open(tmp,"wb").write(png)
-                pdf.set_font("Helvetica","B",10); pdf.set_text_color(33,37,41)
+                pdf.set_font("Helvetica","B",10); pdf.set_text_color(28,43,58)
                 pdf.cell(0,7,f"{an} — Nivel: {niv_label}",ln=True)
                 pdf.image(tmp,x=10,w=190); pdf.ln(4)
     pdf.ln(3)
 
-    sec("4. Guía Bio-Rad de Acciones Correctivas")
-    pdf.set_font("Helvetica","",9); pdf.set_text_color(33,37,41)
-    alarmas_generadas = set()
+    sec("4. Guia Bio-Rad de Acciones Correctivas")
+    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
+    alarmas=set()
     for an in analitos:
         for niv in niveles_disponibles:
             sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
             if sub.empty: continue
             u=sub.iloc[-1]
-            if u["Estado"]!="Verde" and an not in alarmas_generadas:
-                alarmas_generadas.add(an)
-                kb=buscar_kb(an, u["Estado"])
+            if u["Estado"]!="Verde" and an not in alarmas:
+                alarmas.add(an); kb=buscar_kb(an,u["Estado"])
                 if not kb: continue
                 niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
                 pdf.set_font("Helvetica","B",10)
-                if u["Estado"]=="Rojo": pdf.set_text_color(155,28,28)
-                else: pdf.set_text_color(133,100,4)
-                pdf.cell(0,7,f"{'🔴' if u['Estado']=='Rojo' else '🟡'} {an} [{niv_label}] — Regla {u['Regla_Violada']}",ln=True)
-                pdf.set_font("Helvetica","",8); pdf.set_text_color(33,37,41)
+                pdf.set_text_color(153,27,27) if u["Estado"]=="Rojo" else pdf.set_text_color(146,64,14)
+                pdf.cell(0,7,f"{'Rojo' if u['Estado']=='Rojo' else 'Ambar'} — {an} [{niv_label}] — Regla {u['Regla_Violada']}",ln=True)
+                pdf.set_font("Helvetica","",8); pdf.set_text_color(28,43,58)
                 pdf.cell(0,5,f"Producto: {kb['producto']}",ln=True)
-                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Causas probables:",ln=True)
+                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Causas:",ln=True)
                 pdf.set_font("Helvetica","",8)
-                for c in kb["causas_comunes"][:3]: pdf.multi_cell(0,5,f"  • {c}"); 
-                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Acciones correctivas:",ln=True)
+                for c in kb["causas_comunes"][:3]: pdf.multi_cell(0,5,f"  - {c}")
+                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Acciones:",ln=True)
                 pdf.set_font("Helvetica","",8)
-                acciones=kb["acciones_1_3s"] if u["Estado"]=="Rojo" else kb["acciones_warn"]
-                for a in acciones[:4]: pdf.multi_cell(0,5,f"  • {a.replace('🔴','').replace('🟡','').strip()}")
-                pdf.cell(0,5,f"Interferencias: {kb['interferencias'][:80]}...",ln=True)
-                pdf.cell(0,5,f"Referencia: {kb['referencia']}",ln=True); pdf.ln(3)
-
-    if not alarmas_generadas:
-        pdf.set_font("Helvetica","I",9); pdf.set_text_color(10,102,64)
-        pdf.cell(0,7,"Sin alarmas activas — no se requieren acciones correctivas.",ln=True)
+                for a in (kb["acciones_1_3s"] if u["Estado"]=="Rojo" else kb["acciones_warn"])[:4]:
+                    pdf.multi_cell(0,5,f"  - {a.replace('🔴','').replace('🟡','').strip()}")
+                pdf.cell(0,5,f"Ref: {kb['referencia']}",ln=True); pdf.ln(3)
+    if not alarmas:
+        pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70)
+        pdf.cell(0,7,"Sin alarmas activas.",ln=True)
     pdf.ln(4)
-    pdf.set_draw_color(222,226,230); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(2)
-    pdf.set_font("Helvetica","I",8); pdf.set_text_color(108,117,125)
-    pdf.cell(0,5,"AIQC v4.8 · Powered by Bio-Rad KB · Uso interno del laboratorio",ln=True,align="C")
+    pdf.set_draw_color(226,232,240); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(2)
+    pdf.set_font("Helvetica","I",8); pdf.set_text_color(100,116,139)
+    pdf.cell(0,5,"AIQC v4.9 · Powered by Bio-Rad KB · Uso interno del laboratorio",ln=True,align="C")
     return bytes(pdf.output())
 
 
 # ==============================================================
 #  10. ASISTENTE IA GEMINI
 # ==============================================================
-MAX_TURNS = 10
+MAX_TURNS=10
 
-def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
+def ia_responde_gemini(pregunta,historial,df_all,analitos_ls,f_min,f_max):
     api_key=get_api_key()
     if not api_key: return "❌ **API Key de Gemini no configurada.**"
     genai.configure(api_key=api_key)
@@ -1021,24 +1124,18 @@ def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
             u=sub.iloc[-1]; z_calc=(u['Valor']-u['Media_Objetivo'])/u['SD_Objetivo']
             tea=TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]; sig=calcular_sigma(sub,tea)
             niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
-            kb=buscar_kb(an,u["Estado"])
-            kb_txt=""
+            kb=buscar_kb(an,u["Estado"]); kb_txt=""
             if kb and u["Estado"]!="Verde":
-                causas="; ".join(kb["causas_comunes"][:2])
-                acciones="; ".join((kb["acciones_1_3s"] if u["Estado"]=="Rojo" else kb["acciones_warn"])[:2])
-                kb_txt=f"\n  - Bio-Rad causas: {causas}\n  - Bio-Rad acciones: {acciones}"
+                kb_txt=(f"\n  - Bio-Rad causas: {'; '.join(kb['causas_comunes'][:2])}"
+                        f"\n  - Bio-Rad acciones: {'; '.join((kb['acciones_1_3s'] if u['Estado']=='Rojo' else kb['acciones_warn'])[:2])}")
             resumen.append(
                 f"• {an} | Nivel: {niv_label}\n"
                 f"  - Valor: {u['Valor']} | Media: {u['Media_Objetivo']} | SD: {u['SD_Objetivo']}\n"
                 f"  - Z = {z_calc:+.3f} | Estado: {u['Estado']} | Regla: {u['Regla_Violada']} | Score: {int(u['Score_Riesgo'])}/100\n"
                 f"  - Sigma: {sig.get('sigma','N/A')}σ | CV: {sig.get('cv_pct','N/A')}% | Sesgo: {sig.get('sesgo_pct','N/A')}%{kb_txt}")
-    contexto=(
-        f"=== DATOS REALES ({f_min} → {f_max}) ===\n{chr(10).join(resumen)}\n\n"
-        f"=== REGLAS WESTGARD ===\n{REGLAS_DESC}\n\n"
-        f"=== SIGMA METRICS ===\n≥6σ: Clase Mundial | ≥4σ: Buena | ≥3σ: Aceptable | <3σ: Revisar\n\n"
-        f"=== CONTROLES BIO-RAD ===\nLiquichek (bioquímica) + Lyphochek (inmunoensayo/hormonal)\n\n"
-        f"=== PREGUNTA ===\n{pregunta}"
-    )
+    contexto=(f"=== DATOS REALES ({f_min} → {f_max}) ===\n{chr(10).join(resumen)}\n\n"
+              f"=== REGLAS WESTGARD ===\n{REGLAS_DESC}\n\n"
+              f"=== PREGUNTA ===\n{pregunta}")
     recent=historial[1:][-MAX_TURNS*2:]
     gemini_hist=[{"role":"user" if m["role"]=="user" else "model","parts":[m["content"]]} for m in recent]
     last_error=""
@@ -1058,9 +1155,9 @@ def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
 #  11. SIDEBAR
 # ==============================================================
 with st.sidebar:
-    st.markdown('<div class="sb-logo">🔬</div>',unsafe_allow_html=True)
-    st.markdown('<div class="sb-title">AIQC</div>',unsafe_allow_html=True)
-    st.markdown('<div class="sb-sub">Quality Control · v4.8 · Bio-Rad KB</div>',unsafe_allow_html=True)
+    st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sub">Quality Control · v4.9 · Bio-Rad KB</div>', unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("**📂 Fuente de datos**")
     uploaded=st.file_uploader("CSV o Excel",type=["csv","xlsx","xls"],
@@ -1080,7 +1177,8 @@ with st.sidebar:
     analito=st.selectbox("Analito activo",options=sorted(df_all["Analito"].unique()),key="sel_analito")
     niveles_analito=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
     nivel_options={NIVELES.get(n,NIVELES["N"])["label"]:n for n in niveles_analito}
-    nivel_sel_label=st.selectbox("Nivel de control",options=list(nivel_options.keys()),key="sel_nivel")
+    nivel_sel_label=st.selectbox("Nivel de control",options=list(nivel_options.keys()),key="sel_nivel",
+                                  help="N = Normal · PB = Patológico Bajo · PA = Patológico Alto")
     nivel_activo=nivel_options[nivel_sel_label]
 
     fechas_d=sorted(df_all["Fecha"].dropna().unique())
@@ -1115,30 +1213,37 @@ df_series=evaluar_westgard(df_raw)
 ultima=df_series.iloc[-1] if not df_series.empty else None
 analitos_ls=sorted(df_all["Analito"].unique())
 
+ESTADO_CLS={"Verde":"estado-verde","Ámbar":"estado-ambar","Rojo":"estado-rojo"}
+
 
 # ==============================================================
-#  13. CABECERA
+#  13. CABECERA — gradiente azul→verde
 # ==============================================================
-c1,c2=st.columns([4,1])
-with c1:
-    st.markdown("## 🔬 AIQC – Control de Calidad")
-    st.markdown(
-        f"<span style='color:#6C757D;font-size:.9rem'>"
-        f"<b>Analito:</b> {analito} &nbsp;·&nbsp; {nivel_badge(nivel_activo)} &nbsp;·&nbsp; "
-        f"<b>Período:</b> {f_min.strftime('%d/%m/%Y')} → {f_max.strftime('%d/%m/%Y')} "
-        f"&nbsp;·&nbsp; <b>Fuente:</b> {data_src}</span>",unsafe_allow_html=True)
-with c2:
-    if ultima is not None:
-        st.markdown("<br>",unsafe_allow_html=True)
-        st.markdown(estado_badge(ultima["Estado"]),unsafe_allow_html=True)
-st.markdown("<hr>",unsafe_allow_html=True)
+estado_actual=ultima["Estado"] if ultima is not None else "Verde"
+
+st.markdown(f"""
+<div class="aiqc-header">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <div>
+      <h2>🔬 AIQC – Control de Calidad</h2>
+      <div class="meta">
+        <b>Analito:</b> {analito} &nbsp;·&nbsp;
+        {nivel_badge(nivel_activo)} &nbsp;·&nbsp;
+        <b>Período:</b> {f_min.strftime('%d/%m/%Y')} → {f_max.strftime('%d/%m/%Y')}
+        &nbsp;·&nbsp; <b>Fuente:</b> {data_src}
+      </div>
+    </div>
+    <div style="font-size:1.1rem">{estado_badge(estado_actual)}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ==============================================================
 #  14. TABS
 # ==============================================================
 tab_dash,tab_sigma,tab_biorad,tab_chat,tab_log=st.tabs([
-    "📊  Dashboard","📈  Sigma Metrics","📋  Guía Bio-Rad","🤖  Asistente IA (Gemini)","📝  Registro",
+    "📊  Dashboard","📈  Sigma Metrics","📋  Guía Bio-Rad","🤖  Asistente IA","📝  Registro",
 ])
 
 
@@ -1148,24 +1253,28 @@ with tab_dash:
         st.warning("No hay datos para el analito/nivel/rango seleccionado.")
     else:
         score=int(ultima["Score_Riesgo"]); zscore=round(ultima["Z_Score"],2)
-        risk_c={"Verde":"#1A7F4B","Ámbar":"#856404","Rojo":"#9B1C1C"}.get(ultima["Estado"],"#1A7F4B")
+        risk_c={"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}.get(ultima["Estado"],"#0D9E6E")
+        estado_cls=ESTADO_CLS.get(ultima["Estado"],"")
+
         k1,k2,k3,k4,k5=st.columns(5)
         for col,val,lbl,color,sub in [
-            (k1,f"{ultima['Valor']}","Valor Actual","#0066CC","Última medición"),
-            (k2,f"{ultima['Media_Objetivo']}","Media Objetivo","#5A6ACA","μ objetivo"),
-            (k3,f"±{ultima['SD_Objetivo']}","SD Objetivo","#7952B3","σ objetivo"),
-            (k4,f"{zscore:+.2f}σ","Z-Score","#C0392B" if abs(zscore)>=2 else "#1A7F4B","Z=(x-μ)/σ"),
+            (k1,f"{ultima['Valor']}","Valor Actual","#1A6FC4","Última medición"),
+            (k2,f"{ultima['Media_Objetivo']}","Media Objetivo","#4F6FA8","μ objetivo"),
+            (k3,f"±{ultima['SD_Objetivo']}","SD Objetivo","#6B5CA5","σ objetivo"),
+            (k4,f"{zscore:+.2f}σ","Z-Score","#E53E3E" if abs(zscore)>=2 else "#0D9E6E","Z=(x-μ)/σ"),
             (k5,f"{score}/100","Score de Riesgo",risk_c,ultima["Estado"]),
         ]:
             with col:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-val" style="color:{color}">{val}</div>'
-                            f'<div class="kpi-lbl">{lbl}</div><div class="kpi-sub">{sub}</div></div>',
-                            unsafe_allow_html=True)
+                st.markdown(
+                    f'<div class="kpi-card {estado_cls}">'
+                    f'<div class="kpi-val" style="color:{color}">{val}</div>'
+                    f'<div class="kpi-lbl">{lbl}</div>'
+                    f'<div class="kpi-sub">{sub}</div></div>',
+                    unsafe_allow_html=True)
 
-        # Mostrar guía Bio-Rad inline si hay alarma
-        if ultima["Estado"] != "Verde":
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_kb_panel(analito, ultima["Estado"], ultima["Regla_Violada"], nivel_activo)
+        if ultima["Estado"]!="Verde":
+            st.markdown("<br>",unsafe_allow_html=True)
+            render_kb_panel(analito,ultima["Estado"],ultima["Regla_Violada"],nivel_activo)
 
         st.markdown("<br>",unsafe_allow_html=True)
         nivs_analito=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
@@ -1203,10 +1312,9 @@ with tab_sigma:
         tea_editado={}
         cols_tea=st.columns(min(len(analitos_ls),3))
         for i,an in enumerate(analitos_ls):
-            default_tea=TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]
             with cols_tea[i%len(cols_tea)]:
                 tea_editado[an]=st.number_input(f"TEa% — {an.split('(')[0].strip()}",
-                    min_value=1.0,max_value=50.0,value=float(default_tea),step=0.5,key=f"tea_{an}")
+                    min_value=1.0,max_value=50.0,value=float(TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]),step=0.5,key=f"tea_{an}")
     st.markdown("<br>",unsafe_allow_html=True)
     niveles_globales=sorted(df_all["Nivel"].unique())
     sigma_data=[]
@@ -1215,7 +1323,7 @@ with tab_sigma:
             sub=df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)&
                        (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy()
             if sub.empty: continue
-            tea=tea_editado.get(an,TEA_DEFAULT); sig=calcular_sigma(sub,tea)
+            sig=calcular_sigma(sub,tea_editado.get(an,TEA_DEFAULT))
             if sig: sigma_data.append({"analito":an,"nivel":niv,"nivel_label":NIVELES.get(niv,NIVELES["N"])["label"],**sig})
     if not sigma_data:
         st.warning("Sin datos suficientes.")
@@ -1232,7 +1340,7 @@ with tab_sigma:
                                 f'<div class="kpi-sub">{d["categoria"]}</div></div>',unsafe_allow_html=True)
         st.markdown("<br>",unsafe_allow_html=True)
         fig_s=go.Figure()
-        colores_nivel={"N":"#0066CC","PB":"#FD7E14","PA":"#DC3545"}
+        colores_nivel={"N":"#1A6FC4","PB":"#F59E0B","PA":"#E53E3E"}
         for niv in niveles_globales:
             niv_data=[d for d in sigma_data if d["nivel"]==niv]
             if not niv_data: continue
@@ -1240,31 +1348,31 @@ with tab_sigma:
                 name=NIVELES.get(niv,NIVELES["N"])["label"],
                 x=[d["analito"].split("(")[0].strip() for d in niv_data],
                 y=[d["sigma"] for d in niv_data],
-                marker_color=colores_nivel.get(niv,"#0066CC"),
+                marker_color=colores_nivel.get(niv,"#1A6FC4"),
                 marker_line_color="#FFFFFF",marker_line_width=1.5,
                 text=[f"{d['sigma']}σ" for d in niv_data],textposition="outside",
                 hovertemplate="<b>%{x}</b><br>Sigma: <b>%{y}σ</b><extra></extra>"))
-        for y_v,color,lbl in [(6,"#198754","6σ"),(4,"#0066CC","4σ"),(3,"#FD7E14","3σ")]:
+        for y_v,color,lbl in [(6,"#0D9E6E","6σ"),(4,"#1A6FC4","4σ"),(3,"#F59E0B","3σ")]:
             fig_s.add_hline(y=y_v,line_color=color,line_width=1.5,line_dash="dash",
                             annotation_text=lbl,annotation_position="right",
                             annotation_font=dict(color=color,size=11))
-        fig_s.add_hrect(y0=6,y1=10,fillcolor="rgba(25,135,84,.07)",line_width=0)
-        fig_s.add_hrect(y0=4,y1=6,fillcolor="rgba(0,102,204,.06)",line_width=0)
-        fig_s.add_hrect(y0=3,y1=4,fillcolor="rgba(253,126,20,.06)",line_width=0)
-        fig_s.add_hrect(y0=0,y1=3,fillcolor="rgba(220,53,69,.06)",line_width=0)
+        for y0,y1,col in [(6,10,"rgba(13,158,110,.07)"),(4,6,"rgba(26,111,196,.06)"),
+                           (3,4,"rgba(245,158,11,.06)"),(0,3,"rgba(229,62,62,.06)")]:
+            fig_s.add_hrect(y0=y0,y1=y1,fillcolor=col,line_width=0)
         fig_s.update_layout(template="plotly_white",barmode="group",
-            title=dict(text="Sigma Metrics por Analito y Nivel",font=dict(size=15,color="#212529",family="Inter")),
-            paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",font=dict(color="#495057",family="Inter"),
-            xaxis=dict(gridcolor="#F1F3F5",linecolor="#DEE2E6",title="Analito"),
-            yaxis=dict(gridcolor="#F1F3F5",linecolor="#DEE2E6",title="Sigma (σ)",range=[0,11]),
+            title=dict(text="Sigma Metrics por Analito y Nivel",font=dict(size=15,color="#1C2B3A",family="Inter")),
+            paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
+            xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="Analito"),
+            yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="Sigma (σ)",range=[0,11]),
             height=440,margin=dict(l=10,r=130,t=60,b=10),
             legend=dict(orientation="h",y=1.08,x=0.5,xanchor="center"))
         st.plotly_chart(fig_s,use_container_width=True)
-        st.write(pd.DataFrame([{
-            "Analito":d["analito"],"Nivel":d["nivel_label"],"N":d["n"],"Media":d["media"],"SD":d["sd"],
-            "CV%":f"{d['cv_pct']}%","Sesgo%":f"{d['sesgo_pct']}%","TEa%":f"{d['tea_pct']}%",
-            "Sigma":d["sigma"],"Categoría":d["categoria"]} for d in sigma_data
+        st.markdown('<div class="sec-head">Detalle de cálculo</div>',unsafe_allow_html=True)
+        st.write(pd.DataFrame([{"Analito":d["analito"],"Nivel":d["nivel_label"],"N":d["n"],
+            "Media":d["media"],"SD":d["sd"],"CV%":f"{d['cv_pct']}%","Sesgo%":f"{d['sesgo_pct']}%",
+            "TEa%":f"{d['tea_pct']}%","Sigma":d["sigma"],"Categoría":d["categoria"]} for d in sigma_data
         ]).to_html(escape=False,index=False),unsafe_allow_html=True)
+        st.markdown('<div class="sec-head">Interpretación clínica</div>',unsafe_allow_html=True)
         for d in sigma_data:
             s=d["sigma"]; lbl=f"**{d['analito']} [{d['nivel_label']}]** — **{s}σ**"
             if s>=6:   st.success(f"{lbl} clase mundial.")
@@ -1278,30 +1386,21 @@ with tab_biorad:
     st.markdown("### 📋 Guía Bio-Rad de Acciones Correctivas")
     st.markdown(
         "Base de conocimiento basada en los inserts de **Liquichek** (bioquímica) y **Lyphochek** "
-        "(inmunoensayo/hormonal) de Bio-Rad, complementada con CLSI y Westgard Associates. "
-        "Consulta siempre el insert de tu lote específico en "
+        "(inmunoensayo/hormonal). Consulta siempre el insert de tu lote en "
         "[myeInserts QCNet](https://myeinserts-app.qcnet.com/home).")
-
-    # Selector de analito para consulta manual
-    col_sel1, col_sel2 = st.columns([2, 1])
+    col_sel1,col_sel2=st.columns([2,1])
     with col_sel1:
-        an_kb = st.selectbox("Analito a consultar",
-                             options=list(BIORAD_KB.keys()),
-                             key="kb_analito_sel")
+        an_kb=st.selectbox("Analito a consultar",options=list(BIORAD_KB.keys()),key="kb_analito_sel")
     with col_sel2:
-        estado_kb = st.selectbox("Simular estado",
-                                 options=["Rojo (1_3s)","Ámbar (4_1s / 10_x)","Verde (informativo)"],
-                                 key="kb_estado_sel")
-
-    estado_sim = "Rojo" if "Rojo" in estado_kb else "Ámbar" if "Ámbar" in estado_kb else "Verde"
-    regla_sim  = "1_3s" if estado_sim=="Rojo" else "4_1s" if estado_sim=="Ámbar" else "—"
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    render_kb_panel(an_kb, estado_sim, regla_sim, nivel_activo)
-
+        estado_kb=st.selectbox("Simular estado",
+            options=["Rojo (1_3s)","Ámbar (4_1s / 10_x)","Verde (informativo)"],key="kb_estado_sel")
+    estado_sim="Rojo" if "Rojo" in estado_kb else "Ámbar" if "Ámbar" in estado_kb else "Verde"
+    regla_sim="1_3s" if estado_sim=="Rojo" else "4_1s" if estado_sim=="Ámbar" else "—"
+    st.markdown("<br>",unsafe_allow_html=True)
+    render_kb_panel(an_kb,estado_sim,regla_sim,nivel_activo)
     st.markdown("---")
     st.markdown("### 🔴 Alarmas activas en el período seleccionado")
-    hay_alarmas = False
+    hay_alarmas=False
     for an in analitos_ls:
         for niv in sorted(df_all["Nivel"].unique()):
             sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)&
@@ -1310,16 +1409,14 @@ with tab_biorad:
             if sub.empty: continue
             u=sub.iloc[-1]
             if u["Estado"]!="Verde":
-                hay_alarmas=True
-                render_kb_panel(an, u["Estado"], u["Regla_Violada"], niv)
+                hay_alarmas=True; render_kb_panel(an,u["Estado"],u["Regla_Violada"],niv)
     if not hay_alarmas:
-        st.success("✅ No hay alarmas activas en el período seleccionado. ¡El laboratorio opera correctamente!")
-
+        st.success("✅ No hay alarmas activas. ¡El laboratorio opera correctamente!")
     st.markdown("---")
     st.markdown("### 📚 Cobertura de la base de conocimiento")
-    for grupo, analitos_grupo in GRUPOS_ANALITICOS.items():
-        con_ficha = [a for a in analitos_grupo if a in BIORAD_KB]
-        st.markdown(f"**{grupo}:** " + " · ".join([f"`{a}`" for a in con_ficha]))
+    for grupo,analitos_grupo in GRUPOS_ANALITICOS.items():
+        con_ficha=[a for a in analitos_grupo if a in BIORAD_KB]
+        st.markdown(f"**{grupo}:** "+" · ".join([f"`{a}`" for a in con_ficha]))
 
 
 # ── TAB 4: ASISTENTE IA ──────────────────────────────────────
@@ -1328,15 +1425,14 @@ with tab_chat:
     modelo_activo=st.session_state.get("gemini_model_active","models/gemini-2.5-flash")
     st.markdown(
         f'<div class="gemini-banner">🟢 <b>Google Gemini activo</b> · Modelo: <code>{modelo_activo}</code> · '
-        f'Historial: {MAX_TURNS} turnos · Base de conocimiento Bio-Rad integrada en contexto.</div>',
+        f'Historial: {MAX_TURNS} turnos · Base de conocimiento Bio-Rad integrada.</div>',
         unsafe_allow_html=True)
     if "messages" not in st.session_state:
         st.session_state["messages"]=[{"role":"assistant","content":(
-            "¡Hola! Soy el **Asistente AIQC v4.8** con base de conocimiento **Bio-Rad** integrada.\n\n"
+            "¡Hola! Soy el **Asistente AIQC v4.9** con base de conocimiento **Bio-Rad** integrada.\n\n"
             "Prueba a preguntarme:\n"
             "- *¿Por qué puede fallar el control de ALT en el nivel Patológico Alto?*\n"
             "- *¿Qué hago si el Potasio da 1_3s en el nivel Normal?*\n"
-            "- *Explícame las interferencias del colesterol según Bio-Rad*\n"
             "- *Dame un plan correctivo completo para las alarmas activas*"
         )}]
     for msg in st.session_state["messages"]:
@@ -1359,7 +1455,7 @@ with tab_log:
     col_ttl,col_pdf=st.columns([3,1])
     with col_ttl:
         st.markdown("### 📝 Registro de Incidencias y Trazabilidad")
-        st.caption("Acciones persistentes en SQLite. Desglose por nivel de control.")
+        st.caption("Acciones persistentes en SQLite · Desglose por nivel de control.")
     with col_pdf:
         st.markdown("<br>",unsafe_allow_html=True)
         if st.button("📄 Descargar PDF",use_container_width=True,type="primary"):
@@ -1370,8 +1466,7 @@ with tab_log:
                     st.download_button("⬇️ Guardar PDF",data=pdf_bytes,file_name=fname,
                                        mime="application/pdf",use_container_width=True)
                     st.success("✅ Informe generado.")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                except Exception as e: st.error(f"Error: {e}")
 
     niveles_globales_log=sorted(df_all["Nivel"].unique())
     all_log_frames=[]
@@ -1393,7 +1488,7 @@ with tab_log:
         hcols=st.columns([1.4,2.0,1.4,1.1,1.2,1.3,1.4,1.4,1.3])
         for c,lbl in zip(hcols,["📅 Fecha","🔬 Analito","Nivel","Valor","Z-Score","Regla","Score","Estado","✅ Acción"]):
             c.markdown(f"**{lbl}**")
-        st.markdown("<hr>",unsafe_allow_html=True)
+        st.markdown("<hr style='border-color:#E2E8F0'>",unsafe_allow_html=True)
         for idx,row in df_log.iterrows():
             key=f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label','N')}_{idx}"
             rcols=st.columns([1.4,2.0,1.4,1.1,1.2,1.3,1.4,1.4,1.3])
@@ -1409,12 +1504,24 @@ with tab_log:
             nuevo=rcols[8].checkbox("Hecha",value=prev,key=f"accion_{key}")
             if nuevo!=prev: save_accion(db_con,key,nuevo)
 
-        st.markdown("<hr>",unsafe_allow_html=True)
+        st.markdown("<hr style='border-color:#E2E8F0'>",unsafe_allow_html=True)
         acciones_db=load_acciones(db_con)
         claves_log=[f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label','N')}_{idx}" for idx,row in df_log.iterrows()]
         total=len(df_log); hechas=sum(acciones_db.get(k,False) for k in claves_log); pend=total-hechas
         m1,m2,m3,m4=st.columns(4)
         m1.metric("Total violaciones",total); m2.metric("Acciones tomadas ✅",hechas)
         m3.metric("Pendientes ⏳",pend); m4.metric("% completado",f"{int(hechas/total*100) if total else 0}%")
-        if hechas==total: st.success("🎉 Trazabilidad completa.")
-        elif pend: st.warning(f"⚠️ {pend} violación(es) pendiente(s).")
+
+        st.markdown('<div class="sec-head">Resumen por nivel</div>',unsafe_allow_html=True)
+        nivel_cols=st.columns(len(niveles_globales_log))
+        for col,niv in zip(nivel_cols,niveles_globales_log):
+            niv_cfg=NIVELES.get(niv,NIVELES["N"])
+            n_viol=len(df_log[df_log.get("Nivel",pd.Series(dtype=str))==niv]) if "Nivel" in df_log.columns else 0
+            n_rojos=len(df_log[(df_log.get("Nivel",pd.Series(dtype=str))==niv)&(df_log["Estado"]=="Rojo")]) if "Nivel" in df_log.columns else 0
+            with col:
+                st.markdown(f'<div class="kpi-card"><div class="kpi-val" style="color:#1A6FC4">{n_viol}</div>'
+                            f'<div class="kpi-lbl">{niv_cfg["icon"]} {niv_cfg["label"]}</div>'
+                            f'<div class="kpi-sub">{n_rojos} rojos</div></div>',unsafe_allow_html=True)
+
+        if hechas==total: st.success("🎉 Trazabilidad completa. Todas las alertas gestionadas.")
+        elif pend: st.warning(f"⚠️ {pend} violación(es) pendiente(s) de acción.")
