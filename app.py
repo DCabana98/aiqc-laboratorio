@@ -1059,7 +1059,67 @@ def generar_pdf(df_all,analitos,fuente):
                  ln=True)
         pdf.ln(2)
 
-    sec("2. Estado por Analito y Nivel  [Z = (x - media) / SD]")
+    # ── Sección 1b: Resumen visual semáforo ───────────────────
+    sec("1b. Semaforo de Estado por Analito y Nivel")
+    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
+    pdf.cell(0,5,"Estado del ultimo punto de control por analito y nivel:",ln=True); pdf.ln(2)
+    sw=[52,30,22,22,22,22,18]; sh=["Analito","Nivel","Ultimo Valor","Media","SD","Z-Score","Estado"]
+    pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
+    for w,h in zip(sw,sh): pdf.cell(w,8,h,border=1,fill=True)
+    pdf.ln()
+    for an in analitos:
+        for niv in niveles_disponibles:
+            sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
+            if sub.empty: continue
+            u=sub.iloc[-1]; niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
+            if u["Estado"]=="Rojo":    pdf.set_fill_color(254,226,226); pdf.set_text_color(153,27,27)
+            elif u["Estado"]=="Ambar": pdf.set_fill_color(254,243,199); pdf.set_text_color(146,64,14)
+            else:                       pdf.set_fill_color(209,250,229); pdf.set_text_color(6,95,70)
+            pdf.set_font("Helvetica","",8)
+            ico={"Rojo":"[R]","Ambar":"[A]","Verde":"[V]"}.get(u["Estado"],"")
+            for w,v in zip(sw,[
+                an[:24], niv_label[:14], str(u["Valor"]),
+                str(u["Media_Objetivo"]), str(u["SD_Objetivo"]),
+                pdf_txt(f"{u['Z_Score']:+.2f}"),
+                f"{ico} {u['Estado']}"
+            ]):
+                pdf.cell(w,7,pdf_txt(str(v)),border=1,fill=True)
+            pdf.ln()
+    pdf.ln(6)
+
+    # ── Sección 2: Sigma Metrics ──────────────────────────────
+    sec("2. Sigma Metrics por Analito y Nivel (CLIA)")
+    pdf.set_font("Helvetica","",8); pdf.set_text_color(80,80,80)
+    pdf.cell(0,5,"Sigma = (TEa% - Sesgo%) / CV%  |  >=6: Clase Mundial  |  >=4: Buena  |  >=3: Aceptable  |  <3: Revisar",ln=True); pdf.ln(2)
+    sm_w=[46,28,18,18,18,18,42]; sm_h=["Analito","Nivel","TEa%","CV%","Sesgo%","Sigma","Categoria"]
+    pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
+    for w,h in zip(sm_w,sm_h): pdf.cell(w,8,h,border=1,fill=True)
+    pdf.ln()
+    for an in analitos:
+        for niv in niveles_disponibles:
+            sub=df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy()
+            if sub.empty: continue
+            tea=TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]; sig=calcular_sigma(sub,tea)
+            if not sig: continue
+            s=sig["sigma"]
+            if s>=6:   pdf.set_fill_color(209,250,229); pdf.set_text_color(6,95,70)
+            elif s>=4: pdf.set_fill_color(219,234,254); pdf.set_text_color(26,111,196)
+            elif s>=3: pdf.set_fill_color(254,243,199); pdf.set_text_color(146,64,14)
+            else:      pdf.set_fill_color(254,226,226); pdf.set_text_color(153,27,27)
+            pdf.set_font("Helvetica","",8)
+            niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
+            cat_clean=sig["categoria"].replace("🏆","").replace("✅","").replace("⚠️","").replace("🔴","").strip()
+            for w,v in zip(sm_w,[
+                an[:24], niv_label[:14],
+                f"{sig['tea_pct']}%", f"{sig['cv_pct']}%",
+                f"{sig['sesgo_pct']}%", f"{sig['sigma']}",
+                pdf_txt(cat_clean)
+            ]):
+                pdf.cell(w,7,pdf_txt(str(v)),border=1,fill=True)
+            pdf.ln()
+    pdf.ln(6)
+
+    sec("3. Estado por Analito y Nivel  [Z = (x - media) / SD]")
     pdf.set_font("Helvetica","",8); pdf.set_text_color(80,80,80)
     pdf.cell(0,5,pdf_txt("1_3s: +/-3SD -> Rojo | 2_2s: 2 consec +/-2SD -> Rojo | "
                          "4_1s: 4 consec +/-1SD -> Ambar | 10_x: 10 consec mismo lado -> Ambar"),
@@ -1088,7 +1148,7 @@ def generar_pdf(df_all,analitos,fuente):
             pdf.ln()
     pdf.ln(5)
 
-    sec("3. Graficos Levey-Jennings por Analito y Nivel")
+    sec("4. Graficos Levey-Jennings por Analito y Nivel")
     for an in analitos:
         for niv in niveles_disponibles:
             sub_ev=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
@@ -1106,7 +1166,7 @@ def generar_pdf(df_all,analitos,fuente):
                 pdf.cell(0,7,pdf_txt(f"[Grafico no disponible para {an} / {niv_label} - instala kaleido]"),ln=True)
     pdf.ln(3)
 
-    sec("4. Guia Bio-Rad de Acciones Correctivas")
+    sec("5. Guia Bio-Rad de Acciones Correctivas")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
     alarmas=set()
     for an in analitos:
@@ -1140,11 +1200,43 @@ def generar_pdf(df_all,analitos,fuente):
     if not alarmas:
         pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70)
         pdf.cell(0,7,"Sin alarmas activas - no se requieren acciones correctivas.",ln=True)
-    pdf.ln(4)
-    pdf.set_draw_color(226,232,240); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(2)
+
+    # ── Sección 6: Firma y validación ─────────────────────────
+    pdf.add_page()
+    sec("6. Registro de Validacion y Firma")
+    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
+    pdf.cell(0,6,"Este informe ha sido generado automaticamente por AIQC v4.9 y debe ser",ln=True)
+    pdf.cell(0,6,"revisado y validado por el responsable de calidad antes de su archivo.",ln=True)
+    pdf.ln(8)
+
+    # Tabla de firmas
+    fw=[65,65,60]; fh=["Elaborado por","Revisado por","Responsable de Calidad"]
+    pdf.set_font("Helvetica","B",9); pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105)
+    for w,h in zip(fw,fh): pdf.cell(w,8,h,border=1,fill=True)
+    pdf.ln()
+    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
+    for w in fw: pdf.cell(w,22,"",border=1)
+    pdf.ln()
+    pdf.set_font("Helvetica","",8); pdf.set_text_color(100,116,139)
+    for w in fw: pdf.cell(w,6,"Nombre y firma",border="LRB",align="C")
+    pdf.ln(10)
+
+    # Fecha y periodo
+    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
+    pdf.cell(65,8,pdf_txt(f"Fecha de emision: {datetime.now().strftime('%d/%m/%Y')}"),border=1)
+    if f_min and f_max:
+        pdf.cell(125,8,pdf_txt(f"Periodo analizado: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}"),border=1)
+    pdf.ln(10)
+
+    # Declaración
     pdf.set_font("Helvetica","I",8); pdf.set_text_color(100,116,139)
-    pdf.cell(0,5,"AIQC v4.9 · Powered by Bio-Rad KB · Uso interno del laboratorio",ln=True,align="C")
-    return bytes(pdf.output())
+    pdf.multi_cell(0,5,pdf_txt(
+        "Declaracion: Los datos contenidos en este informe son confidenciales y de uso interno. "
+        "Generado conforme a los requisitos de la norma ISO 15189:2022 para la gestion "
+        "de calidad en laboratorios clinicos. Conservar segun politica de archivo del laboratorio."
+    ))
+    pdf.ln(4)
+    pdf.set_draw_color(226,232,240); pdf.line(10,pdf.get_y(),200,pdf.get_y())
 
 
 # ==============================================================
@@ -1504,12 +1596,16 @@ with tab_log:
         if st.button("📄 Descargar PDF",use_container_width=True,type="primary"):
             with st.spinner("Generando informe con guía Bio-Rad…"):
                 try:
-                    pdf_bytes=generar_pdf(df_all,analitos_ls,data_src)
+                    pdf_bytes=generar_pdf(df_all,analitos_ls,data_src,f_min,f_max,lab_nombre)
                     fname=f"AIQC_Informe_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
                     st.download_button("⬇️ Guardar PDF",data=pdf_bytes,file_name=fname,
                                        mime="application/pdf",use_container_width=True)
                     st.success("✅ Informe generado.")
                 except Exception as e: st.error(f"Error: {e}")
+
+    # Nombre del laboratorio desde secrets (opcional)
+    try:    lab_nombre = st.secrets.get("lab",{}).get("nombre","Laboratorio Clinico")
+    except: lab_nombre = "Laboratorio Clinico"
 
     niveles_globales_log=sorted(df_all["Nivel"].unique())
     all_log_frames=[]
