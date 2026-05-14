@@ -1,6 +1,6 @@
 # ==============================================================
 #  AIQC – Artificial Intelligence for Quality Control
-#  Versión: 4.10 – R-4s Westgard multi-nivel + Exportación CSV
+#  Versión: 4.9 – Rediseño SaaS médico + PDF mejorado + Bio-Rad KB
 #  Deploy:  streamlit run app.py
 #  Deps:    pip install streamlit plotly pandas numpy fpdf2 openpyxl google-generativeai kaleido
 # ==============================================================
@@ -22,11 +22,12 @@ st.set_page_config(
 )
 
 # ==============================================================
-#  ESTILOS GLOBALES
+#  ESTILOS GLOBALES v4.9
 # ==============================================================
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 html, body,
 [data-testid="stAppViewContainer"],
 [data-testid="stAppViewBlockContainer"] {
@@ -37,6 +38,7 @@ html, body,
 #MainMenu, footer, header,
 [data-testid="stToolbar"],
 [data-testid="stDecoration"] { display: none !important; }
+
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #1E2D40 0%, #16202E 100%) !important;
     border-right: none !important;
@@ -54,25 +56,31 @@ html, body,
 [data-testid="stSidebar"] [data-baseweb="select"] > div {
     background: rgba(255,255,255,.08) !important;
     border: 1px solid rgba(255,255,255,.15) !important;
-    border-radius: 8px !important; color: #E2E8F0 !important;
+    border-radius: 8px !important;
+    color: #E2E8F0 !important;
 }
 [data-testid="stSidebar"] [data-testid="stDateInput"] input {
     background: rgba(255,255,255,.08) !important;
     border: 1px solid rgba(255,255,255,.15) !important;
-    border-radius: 8px !important; color: #E2E8F0 !important;
+    border-radius: 8px !important;
+    color: #E2E8F0 !important;
 }
+
 [data-baseweb="select"] > div,
 [data-testid="stTextInput"] input,
 [data-testid="stDateInput"] input {
     background-color: #FFFFFF !important;
     border: 1.5px solid #D1D9E0 !important;
-    border-radius: 8px !important; color: #1C2B3A !important;
+    border-radius: 8px !important;
+    color: #1C2B3A !important;
 }
+
 .stButton > button[kind="primary"] {
     background: linear-gradient(135deg, #1A6FC4 0%, #1557A0 100%) !important;
     border: none !important; color: #FFFFFF !important;
     border-radius: 8px !important; font-weight: 600 !important;
     box-shadow: 0 2px 8px rgba(26,111,196,.30) !important;
+    transition: all .2s !important;
 }
 .stButton > button[kind="primary"]:hover {
     background: linear-gradient(135deg, #1557A0 0%, #0F3F78 100%) !important;
@@ -82,6 +90,7 @@ html, body,
     background-color: #FFFFFF !important; border: 1.5px solid #1A6FC4 !important;
     color: #1A6FC4 !important; border-radius: 8px !important; font-weight: 600 !important;
 }
+
 .stTabs [data-baseweb="tab-list"] {
     gap: 6px; background: #FFFFFF; border: 1px solid #E2E8F0;
     border-radius: 12px; padding: 5px 6px; box-shadow: 0 1px 4px rgba(0,0,0,.06);
@@ -98,6 +107,7 @@ html, body,
     color: #FFFFFF !important; font-weight: 700 !important;
     box-shadow: 0 2px 8px rgba(26,111,196,.28) !important;
 }
+
 .kpi-card {
     background: #FFFFFF; border: 1px solid #E8EDF2;
     border-top: 3px solid #1A6FC4; border-radius: 14px;
@@ -112,14 +122,22 @@ html, body,
 .kpi-val  { font-size: 2.1rem; font-weight: 800; letter-spacing: -.6px; line-height: 1.1; }
 .kpi-lbl  { font-size: .70rem; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: .10em; margin-top: 8px; }
 .kpi-sub  { font-size: .76rem; color: #B0BAC9; margin-top: 3px; }
-.badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; border-radius: 999px; font-size: .78rem; font-weight: 700; letter-spacing: .03em; box-shadow: 0 1px 4px rgba(0,0,0,.10); }
+
+.badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px; border-radius: 999px;
+    font-size: .78rem; font-weight: 700; letter-spacing: .03em;
+    box-shadow: 0 1px 4px rgba(0,0,0,.10);
+}
 .badge-green { background: linear-gradient(135deg,#D1FAE5,#A7F3D0); color:#065F46; border:1px solid #6EE7B7; }
 .badge-amber { background: linear-gradient(135deg,#FEF3C7,#FDE68A); color:#92400E; border:1px solid #FCD34D; }
 .badge-red   { background: linear-gradient(135deg,#FEE2E2,#FECACA); color:#991B1B; border:1px solid #FCA5A5; }
+
 .nivel-pill { display:inline-block; padding:4px 13px; border-radius:999px; font-size:.76rem; font-weight:700; }
 .nivel-N  { background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; }
 .nivel-PB { background:#FFFBEB; color:#92400E; border:1px solid #FDE68A; }
 .nivel-PA { background:#FFF1F2; color:#9F1239; border:1px solid #FECDD3; }
+
 .aiqc-header {
     background: linear-gradient(135deg, #1A6FC4 0%, #0D9E6E 100%);
     border-radius: 16px; padding: 22px 28px; margin-bottom: 24px;
@@ -127,24 +145,67 @@ html, body,
 }
 .aiqc-header h2 { color:#FFFFFF !important; margin:0 0 4px 0; font-size:1.5rem; font-weight:800; }
 .aiqc-header .meta { color:rgba(255,255,255,.82); font-size:.875rem; }
+
 .sb-logo  { text-align:center; font-size:2.8rem; margin-bottom:2px; }
-.sb-title { text-align:center; font-size:1.2rem; font-weight:800; background:linear-gradient(135deg,#60A5FA,#34D399); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:2px; }
+.sb-title {
+    text-align:center; font-size:1.2rem; font-weight:800;
+    background:linear-gradient(135deg,#60A5FA,#34D399);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:2px;
+}
 .sb-sub   { text-align:center; font-size:.75rem; color:#64748B !important; margin-bottom:16px; }
-.data-pill { background:rgba(96,165,250,.12); border:1px solid rgba(96,165,250,.28); border-radius:10px; padding:10px 14px; font-size:.82rem; color:#93C5FD !important; margin-top:8px; }
-.sec-head { font-size:.95rem; font-weight:700; color:#1A6FC4; border-left:3px solid #0D9E6E; padding-left:10px; margin:26px 0 14px 0; }
-.login-card { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:20px; padding:52px 48px; max-width:420px; margin:60px auto 0 auto; box-shadow:0 12px 40px rgba(0,0,0,.10); }
-.gemini-banner { background:linear-gradient(135deg,#EFF6FF 0%,#ECFDF5 100%); border:1px solid #BFDBFE; border-radius:10px; padding:10px 16px; font-size:12.5px; color:#1E40AF; margin-bottom:14px; }
-.biorad-card { background:#FFFFFF; border:1px solid #E2E8F0; border-left:4px solid #1A6FC4; border-radius:12px; padding:18px 20px; margin-bottom:12px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
-.biorad-card-red { background:#FFFAFA; border:1px solid #FECACA; border-left:4px solid #E53E3E; border-radius:12px; padding:18px 20px; margin-bottom:12px; box-shadow:0 2px 12px rgba(229,62,62,.08); }
-.biorad-card-amber { background:#FFFDF5; border:1px solid #FDE68A; border-left:4px solid #F59E0B; border-radius:12px; padding:18px 20px; margin-bottom:12px; box-shadow:0 2px 12px rgba(245,158,11,.08); }
+.data-pill {
+    background:rgba(96,165,250,.12); border:1px solid rgba(96,165,250,.28);
+    border-radius:10px; padding:10px 14px; font-size:.82rem;
+    color:#93C5FD !important; margin-top:8px;
+}
+.sec-head {
+    font-size:.95rem; font-weight:700; color:#1A6FC4;
+    border-left:3px solid #0D9E6E; padding-left:10px; margin:26px 0 14px 0;
+}
+.login-card {
+    background:#FFFFFF; border:1px solid #E2E8F0; border-radius:20px;
+    padding:52px 48px; max-width:420px; margin:60px auto 0 auto;
+    box-shadow:0 12px 40px rgba(0,0,0,.10);
+}
+.gemini-banner {
+    background:linear-gradient(135deg,#EFF6FF 0%,#ECFDF5 100%);
+    border:1px solid #BFDBFE; border-radius:10px;
+    padding:10px 16px; font-size:12.5px; color:#1E40AF; margin-bottom:14px;
+}
+.biorad-card {
+    background:#FFFFFF; border:1px solid #E2E8F0; border-left:4px solid #1A6FC4;
+    border-radius:12px; padding:18px 20px; margin-bottom:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+.biorad-card-red {
+    background:#FFFAFA; border:1px solid #FECACA; border-left:4px solid #E53E3E;
+    border-radius:12px; padding:18px 20px; margin-bottom:12px;
+    box-shadow:0 2px 12px rgba(229,62,62,.08);
+}
+.biorad-card-amber {
+    background:#FFFDF5; border:1px solid #FDE68A; border-left:4px solid #F59E0B;
+    border-radius:12px; padding:18px 20px; margin-bottom:12px;
+    box-shadow:0 2px 12px rgba(245,158,11,.08);
+}
+
 table { width:100%; border-collapse:collapse; font-size:.86rem; }
 thead tr { background:#F8FAFC; }
-th { padding:11px 13px; text-align:left; font-weight:700; color:#475569; border-bottom:2px solid #E2E8F0; text-transform:uppercase; font-size:.72rem; letter-spacing:.06em; }
+th { padding:11px 13px; text-align:left; font-weight:700; color:#475569;
+     border-bottom:2px solid #E2E8F0; text-transform:uppercase; font-size:.72rem; letter-spacing:.06em; }
 td { padding:10px 13px; border-bottom:1px solid #F1F5F9; color:#1C2B3A; }
 tr:hover td { background:#F8FAFC; }
-[data-testid="stChatMessage"] { background:#FFFFFF !important; border:1px solid #E2E8F0 !important; border-radius:14px !important; box-shadow:0 1px 4px rgba(0,0,0,.05) !important; }
-[data-testid="stMetric"] { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:16px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
-[data-testid="stExpander"] { background:#FFFFFF !important; border:1px solid #E2E8F0 !important; border-radius:10px !important; }
+
+[data-testid="stChatMessage"] {
+    background:#FFFFFF !important; border:1px solid #E2E8F0 !important;
+    border-radius:14px !important; box-shadow:0 1px 4px rgba(0,0,0,.05) !important;
+}
+[data-testid="stMetric"] {
+    background:#FFFFFF; border:1px solid #E2E8F0;
+    border-radius:12px; padding:16px 14px; box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+[data-testid="stExpander"] {
+    background:#FFFFFF !important; border:1px solid #E2E8F0 !important; border-radius:10px !important;
+}
 ::-webkit-scrollbar { width:6px; height:6px; }
 ::-webkit-scrollbar-track { background:#F1F5F9; }
 ::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:3px; }
@@ -186,7 +247,7 @@ BIORAD_KB = {
             "Recalibrar el módulo ISE con soluciones estándar trazables",
             "Si persiste: contactar soporte técnico del analizador"],
         "acciones_warn":["Verificar tiempo de apertura del vial","Comprobar limpieza del electrodo ISE",
-            "Revisar temperatura de la celda de medida (37 oC +/- 0,5 oC)"],
+            "Revisar temperatura de la celda de medida (37 oC ± 0,5 oC)"],
         "causas_deriva":["Desgaste de la membrana del electrodo ISE (vida útil: 3-6 meses)",
             "Acumulación de proteínas en el electrodo","Deriva del calibrador ISE"],
         "estabilidad_biorad":"Reconstituido: 8 h a temperatura ambiente / 5 días a 2-8 oC",
@@ -441,7 +502,6 @@ GEMINI_SYSTEM = (
     "Usas controles Bio-Rad (Liquichek y Lyphochek). "
     "REGLA ABSOLUTA: Cada respuesta DEBE incluir los valores numéricos reales del laboratorio. "
     "Cuando hay alarma, menciona causas y acciones según el insert Bio-Rad. "
-    "La regla R-4s indica ERROR ALEATORIO entre niveles — NO recalibrar como primer paso. "
     "NUNCA respondas de forma genérica. Respondes en español, técnico y conciso. "
     "Usas Markdown. Z-Score: Z = (x - media) / SD."
 )
@@ -467,7 +527,7 @@ def render_login():
         <div style="font-size:3rem;text-align:center">🔬</div>
         <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#1A6FC4;margin-bottom:4px">AIQC</div>
         <div style="text-align:center;font-size:.86rem;color:#64748B;margin-bottom:28px">
-            Artificial Intelligence for Quality Control · v4.10
+            Artificial Intelligence for Quality Control · v4.9
         </div></div>""", unsafe_allow_html=True)
     _, mid, _ = st.columns([1,1.8,1])
     with mid:
@@ -580,15 +640,9 @@ def leer_archivo(uploaded):
 
 
 # ==============================================================
-#  6. WESTGARD (incluye R-4s multi-nivel)
+#  6. WESTGARD
 # ==============================================================
-REGLAS_DESC = (
-    "1_3s: +/-3SD -> Rojo | "
-    "2_2s: 2 consec +/-2SD -> Rojo | "
-    "4_1s: 4 consec +/-1SD -> Ambar | "
-    "10_x: 10 consec mismo lado -> Ambar | "
-    "R-4s: 2 niveles opuestos >2SD -> Rojo (multi-nivel)"
-)
+REGLAS_DESC = "1_3s: +/-3SD -> Rojo | 2_2s: 2 consec +/-2SD -> Rojo | 4_1s: 4 consec +/-1SD -> Ambar | 10_x: 10 consec mismo lado -> Ambar"
 
 def evaluar_westgard(serie):
     df = serie.copy().sort_values("Fecha").reset_index(drop=True)
@@ -614,94 +668,6 @@ def evaluar_westgard(serie):
             df.at[i,"Regla_Violada"]="1_2s (warn)"; df.at[i,"Score_Riesgo"]=45; df.at[i,"Estado"]="Ámbar"; continue
         df.at[i,"Score_Riesgo"]=max(0,int(abs(z)*18))
     return df
-
-def evaluar_r4s(df_all: pd.DataFrame, analito: str, f_min, f_max):
-    """
-    Regla R-4s multi-nivel cruzada.
-    Dispara Rojo si |Z_niv_A - Z_niv_B| >= 4.0 con signos opuestos
-    en el último punto de cada nivel — indica error aleatorio.
-    """
-    niveles_disponibles = sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
-    if len(niveles_disponibles) < 2:
-        return None
-    zscores = {}
-    for niv in niveles_disponibles:
-        sub = df_all[
-            (df_all["Analito"]==analito) & (df_all["Nivel"]==niv) &
-            (df_all["Fecha"]>=pd.Timestamp(f_min)) &
-            (df_all["Fecha"]<=pd.Timestamp(f_max))
-        ].copy()
-        if sub.empty: continue
-        u = sub.sort_values("Fecha").iloc[-1]
-        z = (u["Valor"]-u["Media_Objetivo"])/u["SD_Objetivo"]
-        zscores[niv] = {"z":round(z,3),"valor":u["Valor"],"media":u["Media_Objetivo"],
-                        "sd":u["SD_Objetivo"],"fecha":u["Fecha"]}
-    if len(zscores) < 2: return None
-    pares = list(zscores.items())
-    for i in range(len(pares)):
-        for j in range(i+1, len(pares)):
-            niv_a, info_a = pares[i]
-            niv_b, info_b = pares[j]
-            diff = abs(info_a["z"]-info_b["z"])
-            if diff >= 4.0 and np.sign(info_a["z"]) != np.sign(info_b["z"]):
-                return {
-                    "dispara":True, "analito":analito,
-                    "niv_a":niv_a, "niv_b":niv_b,
-                    "label_a":NIVELES.get(niv_a,NIVELES["N"])["label"],
-                    "label_b":NIVELES.get(niv_b,NIVELES["N"])["label"],
-                    "z_a":info_a["z"], "z_b":info_b["z"],
-                    "diferencia":round(diff,3),
-                    "valor_a":info_a["valor"], "valor_b":info_b["valor"],
-                    "media_a":info_a["media"], "media_b":info_b["media"],
-                    "sd_a":info_a["sd"],       "sd_b":info_b["sd"],
-                    "fecha_a":info_a["fecha"], "fecha_b":info_b["fecha"],
-                }
-    return None
-
-def render_r4s_alert(r4s: dict):
-    """Panel de alerta R-4s en el Dashboard."""
-    st.markdown(f"""
-    <div style="background:#FFFAFA;border:1.5px solid #FECACA;border-left:5px solid #E53E3E;
-         border-radius:12px;padding:18px 20px;margin-bottom:14px;
-         box-shadow:0 2px 12px rgba(229,62,62,.08);">
-        <div style="font-size:15px;font-weight:700;color:#991B1B;margin-bottom:8px">
-            ⚡ Regla R-4s — Error aleatorio entre niveles
-        </div>
-        <div style="font-size:13px;color:#7F1D1D;line-height:1.7">
-            <b>{r4s['analito']}</b>: nivel <b>{r4s['label_a']}</b> Z=<b>{r4s['z_a']:+.2f}σ</b>
-            vs nivel <b>{r4s['label_b']}</b> Z=<b>{r4s['z_b']:+.2f}σ</b><br>
-            Diferencia: <b>{r4s['diferencia']:.2f}σ</b> (umbral R-4s: ≥ 4.0σ) —
-            indica <b>error aleatorio</b>, no deriva sistemática.
-        </div>
-    </div>""", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(f"""<div style="background:#FEF2F2;border:1px solid #FECACA;
-             border-radius:10px;padding:14px 16px;">
-            <div style="font-size:12px;font-weight:700;color:#991B1B;
-                 text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">{r4s['label_a']}</div>
-            <div style="font-size:22px;font-weight:700;color:#E53E3E">{r4s['valor_a']}</div>
-            <div style="font-size:12px;color:#7F1D1D;margin-top:4px">
-                Media: {r4s['media_a']} · SD: {r4s['sd_a']}<br>Z = <b>{r4s['z_a']:+.2f}σ</b>
-            </div></div>""", unsafe_allow_html=True)
-    with c2:
-        st.markdown(f"""<div style="background:#EFF6FF;border:1px solid #BFDBFE;
-             border-radius:10px;padding:14px 16px;">
-            <div style="font-size:12px;font-weight:700;color:#1D4ED8;
-                 text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">{r4s['label_b']}</div>
-            <div style="font-size:22px;font-weight:700;color:#1A6FC4">{r4s['valor_b']}</div>
-            <div style="font-size:12px;color:#1E40AF;margin-top:4px">
-                Media: {r4s['media_b']} · SD: {r4s['sd_b']}<br>Z = <b>{r4s['z_b']:+.2f}σ</b>
-            </div></div>""", unsafe_allow_html=True)
-    st.markdown("""
-**¿Qué hacer ante una alarma R-4s?**
-- Inspeccionar viales de ambos niveles — casi siempre indica problema de pipeteo o mezcla
-- Repetir **ambos niveles** simultáneamente con viales nuevos
-- Si persiste: revisar sistema de pipeteo automático del analizador
-- Si corrige: el problema era el vial original (burbuja, precipitado, mala mezcla)
-- **No recalibrar** como primer paso — la R-4s no indica sesgo sistemático
-- Documentar la incidencia en el registro de trazabilidad
-""")
 
 def estado_badge(e):
     cfg={"Verde":("badge-green","●"),"Ámbar":("badge-amber","▲"),"Rojo":("badge-red","■")}
@@ -784,7 +750,7 @@ def fig_to_png_bytes(fig):
 
 
 # ==============================================================
-#  9. UTILIDADES PDF
+#  9. PDF
 # ==============================================================
 def pdf_txt(s: str) -> str:
     reemplazos={
@@ -793,7 +759,7 @@ def pdf_txt(s: str) -> str:
         "→":"->","←":"<-","↑":"(+)","↓":"(-)",
         "≥":">=","≤":"<=","≠":"!=","≈":"~","°":"o",
         "\u2019":"'","\u2018":"'","\u201C":'"',"\u201D":'"',"\u2026":"...",
-        "🔴":"[ROJO]","🟡":"[AMBAR]","🟢":"[VERDE]","⚡":"[R-4s]",
+        "🔴":"[ROJO]","🟡":"[AMBAR]","🟢":"[VERDE]",
         "✅":"[OK]","⚠️":"[WARN]","❌":"[ERROR]",
         "🏆":"[*]","📋":"","📄":"","📈":"","🔬":"","🧪":"","📖":"","🔍":"",
         "•":"-","·":".",
@@ -801,67 +767,31 @@ def pdf_txt(s: str) -> str:
     for orig,repl in reemplazos.items(): s=s.replace(orig,repl)
     return s.encode("latin-1",errors="replace").decode("latin-1")
 
-
-# ==============================================================
-#  10. EXPORTACIÓN CSV (nuevo en v4.10)
-# ==============================================================
-def generar_csv(df_log: pd.DataFrame, acciones_db: dict, claves_log: list) -> bytes:
-    """
-    Genera CSV del registro de incidencias.
-    - Columna Accion_Completada desde SQLite
-    - Nivel legible (Normal / Patológico Bajo / Patológico Alto)
-    - Fechas en dd/mm/yyyy
-    - UTF-8 BOM + separador ';' → compatible con Excel español
-    """
-    if df_log.empty: return b""
-    export = df_log.copy()
-    export["Fecha"] = export["Fecha"].dt.strftime("%d/%m/%Y")
-    export["Nivel_Label"] = export.get(
-        "_nivel_label",
-        export["Nivel"].map(lambda n: NIVELES.get(n,NIVELES["N"])["label"])
-    )
-    export["Accion_Completada"] = [
-        "Si" if acciones_db.get(k,False) else "No"
-        for k in claves_log
-    ]
-    columnas = {
-        "Fecha":"Fecha","Analito":"Analito","Nivel_Label":"Nivel","Lote":"Lote",
-        "Valor":"Valor_Medido","Media_Objetivo":"Media_Objetivo","SD_Objetivo":"SD_Objetivo",
-        "Z_Score":"Z_Score","Regla_Violada":"Regla_Westgard",
-        "Score_Riesgo":"Score_Riesgo_100","Estado":"Estado",
-        "Accion_Completada":"Accion_Completada",
-    }
-    cols_ok = {k:v for k,v in columnas.items() if k in export.columns}
-    export = export[list(cols_ok.keys())].rename(columns=cols_ok)
-    if "Z_Score" in export.columns: export["Z_Score"] = export["Z_Score"].round(3)
-    return export.to_csv(index=False,encoding="utf-8-sig",sep=";").encode("utf-8-sig")
-
-
-# ==============================================================
-#  11. GENERADOR PDF
-# ==============================================================
 def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LAB. CENTRAL"):
 
     class PDF(FPDF):
         def footer(self):
             self.set_y(-13); self.set_font("Helvetica","I",8)
             self.set_text_color(100,116,139)
-            self.cell(0,10,f"Pagina {self.page_no()}/{{nb}}  |  AIQC v4.10  |  Uso interno",align="C")
+            self.cell(0,10,f"Pagina {self.page_no()}/{{nb}}  |  AIQC v4.9  |  Uso interno",align="C")
 
     pdf=PDF(); pdf.alias_nb_pages(); pdf.set_auto_page_break(auto=True,margin=20)
     pdf.add_page()
 
+    # Cabecera
     pdf.set_fill_color(26,111,196); pdf.rect(0,0,210,42,"F")
     pdf.set_font("Helvetica","B",18); pdf.set_text_color(255,255,255); pdf.ln(8)
     pdf.cell(0,10,"AIQC - Informe de Incidencias de Calidad",ln=True,align="C")
     pdf.set_font("Helvetica","B",10)
     pdf.cell(0,6,pdf_txt(lab_nombre),ln=True,align="C")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(220,235,255)
-    periodo = f"  |  Periodo: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}" if f_min and f_max else ""
+    periodo=""
+    if f_min and f_max:
+        periodo=f"  |  Periodo: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}"
     pdf.cell(0,6,pdf_txt(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}{periodo}  |  Analitos: {', '.join(analitos)}"),ln=True,align="C")
     pdf.ln(12)
 
-    niveles_disponibles = sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
+    niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
 
     def sec(txt):
         pdf.set_font("Helvetica","B",12); pdf.set_text_color(26,111,196)
@@ -970,36 +900,7 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
                 pdf.image(tmp,x=10,w=190); pdf.ln(4)
             else:
                 pdf.set_font("Helvetica","I",9); pdf.set_text_color(100,116,139)
-                pdf.cell(0,7,pdf_txt("[Grafico no disponible - instala kaleido]"),ln=True)
-
-    # Sección 4b: R-4s (nuevo en v4.10)
-    sec("4b. Evaluacion R-4s Multi-Nivel (Error Aleatorio)")
-    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
-    pdf.cell(0,5,pdf_txt(
-        "La regla R-4s detecta error aleatorio cuando dos niveles del mismo analito "
-        "tienen Z-Scores de signos opuestos con diferencia >= 4.0 sigma."),ln=True)
-    pdf.ln(3)
-    hay_r4s = False
-    for an in analitos:
-        f_min_ts = pd.Timestamp(f_min) if f_min else None
-        f_max_ts = pd.Timestamp(f_max) if f_max else None
-        r4s = evaluar_r4s(df_all, an, f_min_ts, f_max_ts)
-        if r4s:
-            hay_r4s = True
-            pdf.set_font("Helvetica","B",10); pdf.set_text_color(153,27,27)
-            pdf.cell(0,7,pdf_txt(
-                f"[R-4s ACTIVA] {an}: {r4s['label_a']} (Z={r4s['z_a']:+.2f}) "
-                f"vs {r4s['label_b']} (Z={r4s['z_b']:+.2f}) "
-                f"| Diferencia: {r4s['diferencia']:.2f}sigma"),ln=True)
-            pdf.set_font("Helvetica","",8); pdf.set_text_color(28,43,58)
-            pdf.multi_cell(0,5,pdf_txt(
-                "Accion: Repetir ambos niveles con viales nuevos. "
-                "NO recalibrar como primer paso. "
-                "Revisar sistema de pipeteo si persiste.")); pdf.ln(2)
-    if not hay_r4s:
-        pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70)
-        pdf.cell(0,7,pdf_txt("Sin alarmas R-4s detectadas en el periodo."),ln=True)
-    pdf.ln(4)
+                pdf.cell(0,7,pdf_txt(f"[Grafico no disponible - instala kaleido]"),ln=True)
 
     # Sección 5: Guía Bio-Rad
     sec("5. Guia Bio-Rad de Acciones Correctivas")
@@ -1037,7 +938,7 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
     pdf.add_page()
     sec("6. Registro de Validacion y Firma")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
-    pdf.cell(0,6,"Este informe ha sido generado automaticamente por AIQC v4.10 y debe ser revisado",ln=True)
+    pdf.cell(0,6,"Este informe ha sido generado automaticamente por AIQC v4.9 y debe ser revisado",ln=True)
     pdf.cell(0,6,"y validado por el responsable de calidad antes de su archivo.",ln=True)
     pdf.ln(8)
     fw=[65,65,60]; fh=["Elaborado por","Revisado por","Responsable de Calidad"]
@@ -1059,14 +960,15 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
     pdf.multi_cell(0,5,pdf_txt(
         "Declaracion: Los datos contenidos en este informe son confidenciales y de uso interno. "
         "Generado conforme a los requisitos de la norma ISO 15189:2022. "
-        "Conservar segun politica de archivo del laboratorio."))
+        "Conservar segun politica de archivo del laboratorio."
+    ))
     pdf.ln(4)
     pdf.set_draw_color(226,232,240); pdf.line(10,pdf.get_y(),200,pdf.get_y())
     return bytes(pdf.output())
 
 
 # ==============================================================
-#  12. ASISTENTE IA GEMINI
+#  10. ASISTENTE IA GEMINI
 # ==============================================================
 MAX_TURNS = 10
 
@@ -1094,26 +996,8 @@ def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
                 f"  - Valor: {u['Valor']} | Media: {u['Media_Objetivo']} | SD: {u['SD_Objetivo']}\n"
                 f"  - Z = {z_calc:+.3f} | Estado: {u['Estado']} | Regla: {u['Regla_Violada']} | Score: {int(u['Score_Riesgo'])}/100\n"
                 f"  - Sigma: {sig.get('sigma','N/A')}sigma | CV: {sig.get('cv_pct','N/A')}% | Sesgo: {sig.get('sesgo_pct','N/A')}%{kb_txt}")
-
-    # R-4s en contexto Gemini
-    r4s_txt_lines=[]
-    for an in analitos_ls:
-        r4s_g=evaluar_r4s(df_all,an,f_min,f_max)
-        if r4s_g:
-            r4s_txt_lines.append(
-                f"  [R-4s ACTIVA] {an}: {r4s_g['label_a']} Z={r4s_g['z_a']:+.2f} "
-                f"vs {r4s_g['label_b']} Z={r4s_g['z_b']:+.2f} "
-                f"(diferencia={r4s_g['diferencia']:.2f}sigma -> error aleatorio)")
-    r4s_seccion = ""
-    if r4s_txt_lines:
-        r4s_seccion = ("=== ALARMAS R-4s (ERROR ALEATORIO MULTI-NIVEL) ===\n"
-                       + "\n".join(r4s_txt_lines) + "\n\n")
-
     contexto=(f"=== DATOS REALES ({f_min} - {f_max}) ===\n{chr(10).join(resumen)}\n\n"
-              f"{r4s_seccion}"
-              f"=== REGLAS WESTGARD ===\n{REGLAS_DESC}\n\n"
-              f"=== PREGUNTA ===\n{pregunta}")
-
+              f"=== REGLAS WESTGARD ===\n{REGLAS_DESC}\n\n=== PREGUNTA ===\n{pregunta}")
     recent=historial[1:][-MAX_TURNS*2:]
     gemini_hist=[{"role":"user" if m["role"]=="user" else "model","parts":[m["content"]]} for m in recent]
     last_error=""
@@ -1130,12 +1014,12 @@ def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
 
 
 # ==============================================================
-#  13. SIDEBAR
+#  11. SIDEBAR
 # ==============================================================
 with st.sidebar:
     st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sb-sub">Quality Control · v4.10 · Bio-Rad KB</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sub">Quality Control · v4.9 · Bio-Rad KB</div>', unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("**📂 Fuente de datos**")
     uploaded=st.file_uploader("CSV o Excel",type=["csv","xlsx","xls"],
@@ -1179,10 +1063,6 @@ with st.sidebar:
             sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
             est=sub.iloc[-1]["Estado"]; led={"Verde":"🟢","Ámbar":"🟡","Rojo":"🔴"}.get(est,"⚪")
             st.markdown(f"{led} **{an}** · {NIVELES.get(niv,NIVELES['N'])['label']} — {est}")
-        # ── R-4s en sidebar ──
-        r4s_sb=evaluar_r4s(df_all,an,f_min,f_max)
-        if r4s_sb:
-            st.markdown(f"⚡ **{an}** · R-4s: {r4s_sb['label_a']} vs {r4s_sb['label_b']} — **Error aleatorio**")
 
     st.markdown("---")
     if st.button("Cerrar sesión",use_container_width=True):
@@ -1191,7 +1071,7 @@ with st.sidebar:
 
 
 # ==============================================================
-#  14. DATOS ACTIVOS
+#  12. DATOS ACTIVOS
 # ==============================================================
 df_raw=df_all[(df_all["Analito"]==analito)&(df_all["Nivel"]==nivel_activo)&
               (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy()
@@ -1200,12 +1080,9 @@ ultima=df_series.iloc[-1] if not df_series.empty else None
 analitos_ls=sorted(df_all["Analito"].unique())
 ESTADO_CLS={"Verde":"estado-verde","Ámbar":"estado-ambar","Rojo":"estado-rojo"}
 
-# R-4s para el analito activo
-r4s_result=evaluar_r4s(df_all,analito,f_min,f_max)
-
 
 # ==============================================================
-#  15. CABECERA
+#  13. CABECERA
 # ==============================================================
 estado_actual=ultima["Estado"] if ultima is not None else "Verde"
 st.markdown(f"""
@@ -1227,10 +1104,15 @@ st.markdown(f"""
 
 
 # ==============================================================
-#  16. TABS
+#  14. TABS
 # ==============================================================
-tab_dash,tab_sigma,tab_biorad,tab_chat,tab_log=st.tabs([
-    "📊  Dashboard","📈  Sigma Metrics","📋  Guía Bio-Rad","🤖  Asistente IA","📝  Registro",
+tab_dash,tab_ewma,tab_sigma,tab_biorad,tab_chat,tab_log=st.tabs([
+    "📊  Dashboard",
+    "📉  EWMA/CUSUM",
+    "📈  Sigma Metrics",
+    "📋  Guía Bio-Rad",
+    "🤖  Asistente IA",
+    "📝  Registro",
 ])
 
 
@@ -1258,17 +1140,11 @@ with tab_dash:
                     f'<div class="kpi-sub">{sub}</div></div>',
                     unsafe_allow_html=True)
 
-        # ── R-4s alert ────────────────────────────────────────
-        if r4s_result:
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_r4s_alert(r4s_result)
-
-        # ── Westgard individual + Bio-Rad KB ─────────────────
         if ultima["Estado"]!="Verde":
-            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>",unsafe_allow_html=True)
             render_kb_panel(analito,ultima["Estado"],ultima["Regla_Violada"],nivel_activo)
 
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<br>",unsafe_allow_html=True)
         nivs_analito=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
         if len(nivs_analito)>1:
             st.markdown('<div class="sec-head">Comparativa de niveles — Levey-Jennings</div>',unsafe_allow_html=True)
@@ -1296,7 +1172,189 @@ with tab_dash:
                      .to_html(escape=False,index=False),unsafe_allow_html=True)
 
 
-# ── TAB 2: SIGMA METRICS ─────────────────────────────────────
+# ── TAB 2: EWMA / CUSUM ──────────────────────────────────────
+with tab_ewma:
+    st.markdown("### 📉 EWMA / CUSUM — Detección Temprana de Tendencias")
+    st.caption(
+        "EWMA detecta derivas graduales antes de que disparen las reglas de Westgard. "
+        "CUSUM acumula desviaciones para identificar el punto exacto de inicio de la deriva."
+    )
+
+    if df_series.empty or ultima is None:
+        st.warning("No hay datos para el analito/nivel/rango seleccionado.")
+    else:
+        z_scores = df_series["Z_Score"].tolist()
+        fechas   = df_series["Fecha"].tolist()
+
+        # ── Parámetros configurables ──────────────────────────
+        with st.expander("⚙️ Parámetros EWMA y CUSUM", expanded=False):
+            col_p1, col_p2, col_p3 = st.columns(3)
+            with col_p1:
+                lam = st.slider(
+                    "λ EWMA (sensibilidad)",
+                    min_value=0.05, max_value=0.50,
+                    value=0.20, step=0.05, key="ewma_lam",
+                    help="λ pequeño = más sensible a derivas lentas. λ grande = más sensible a cambios bruscos.")
+            with col_p2:
+                cusum_k = st.slider(
+                    "k CUSUM (allowance)",
+                    min_value=0.25, max_value=1.0,
+                    value=0.5, step=0.25, key="cusum_k",
+                    help="Margen de tolerancia. 0.5σ es el valor estándar para detectar desplazamientos de 1σ.")
+            with col_p3:
+                cusum_h = st.slider(
+                    "h CUSUM (umbral alarma)",
+                    min_value=2.0, max_value=8.0,
+                    value=5.0, step=0.5, key="cusum_h",
+                    help="Umbral de decisión. h=5 es el valor estándar. Menor h = más sensible pero más falsas alarmas.")
+
+        # ── Cálculos ─────────────────────────────────────────
+        ewma_r  = calcular_ewma(z_scores, lam=lam)
+        cusum_r = calcular_cusum(z_scores, k=cusum_k, h=cusum_h)
+
+        # ── KPIs de estado ───────────────────────────────────
+        ewma_estado  = ewma_r["estados"][-1] if ewma_r["estados"] else "Verde"
+        cusum_alarma = cusum_r["primera_alarma"] is not None
+
+        risk_ewma  = {"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}.get(ewma_estado,"#0D9E6E")
+        risk_cusum = "#E53E3E" if cusum_alarma else "#0D9E6E"
+
+        n_ambar_ewma = sum(1 for e in ewma_r["estados"] if e=="Ámbar")
+        n_rojo_ewma  = sum(1 for e in ewma_r["estados"] if e=="Rojo")
+
+        kc1, kc2, kc3, kc4, kc5 = st.columns(5)
+        for col, val, lbl, color, sub in [
+            (kc1, f"{ewma_r['ultimo_ewma']:+.3f}σ", "EWMA Actual",        risk_ewma,  ewma_estado),
+            (kc2, f"{ewma_r['sigma_ewma']:.4f}",    "σ EWMA (asintótica)","#4F6FA8",  f"λ={lam}"),
+            (kc3, f"{n_rojo_ewma}",                 "Puntos EWMA Rojo",   "#E53E3E",  f"{n_ambar_ewma} ámbar"),
+            (kc4, f"{cusum_r['max_cp']:.2f}",       "CUSUM+ Máx",         risk_cusum, f"umbral h={cusum_h}"),
+            (kc5, f"{cusum_r['max_cm']:.2f}",       "CUSUM− Máx",         risk_cusum, f"k={cusum_k}"),
+        ]:
+            with col:
+                st.markdown(
+                    f'<div class="kpi-card">'
+                    f'<div class="kpi-val" style="color:{color}">{val}</div>'
+                    f'<div class="kpi-lbl">{lbl}</div>'
+                    f'<div class="kpi-sub">{sub}</div></div>',
+                    unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── Alertas EWMA/CUSUM ───────────────────────────────
+        alerta_mostrada = False
+        if ewma_estado == "Rojo":
+            st.error(
+                f"🔴 **EWMA en zona ROJA** — El promedio ponderado exponencial supera ±3σ. "
+                f"Valor actual: **{ewma_r['ultimo_ewma']:+.3f}σ**. "
+                f"Indica una deriva sistemática sostenida. Acción correctiva inmediata recomendada."
+            )
+            alerta_mostrada = True
+        elif ewma_estado == "Ámbar":
+            inicio = ewma_r["inicio_deriva"]
+            fecha_inicio = fechas[inicio].strftime("%d/%m/%Y") if inicio is not None else "—"
+            st.warning(
+                f"⚠️ **EWMA en zona ÁMBAR** — Tendencia detectada desde **{fecha_inicio}**. "
+                f"Valor actual: **{ewma_r['ultimo_ewma']:+.3f}σ**. "
+                f"Monitoreo estrecho recomendado antes de que dispare Westgard."
+            )
+            alerta_mostrada = True
+
+        if cusum_alarma:
+            fecha_cusum = fechas[cusum_r["primera_alarma"]].strftime("%d/%m/%Y")
+            tipo_txt = "ascendente ↑" if cusum_r["tipo_deriva"]=="ascendente" else "descendente ↓"
+            st.error(
+                f"🔴 **CUSUM dispara alarma** — Deriva **{tipo_txt}** detectada desde **{fecha_cusum}**. "
+                f"C+={cusum_r['max_cp']:.2f} / C−={cusum_r['max_cm']:.2f} "
+                f"(umbral h={cusum_h}). Revisar calibración y reactivos."
+            )
+            alerta_mostrada = True
+
+        if not alerta_mostrada:
+            st.success(
+                f"✅ **Proceso bajo control estadístico** — "
+                f"EWMA={ewma_r['ultimo_ewma']:+.3f}σ dentro de ±2σ. "
+                f"CUSUM C+={cusum_r['max_cp']:.2f} / C−={cusum_r['max_cm']:.2f} "
+                f"por debajo del umbral h={cusum_h}. No se detectan tendencias."
+            )
+
+        # ── Gráficos ─────────────────────────────────────────
+        st.markdown('<div class="sec-head">Gráfico EWMA</div>', unsafe_allow_html=True)
+        fig_ewma = build_ewma_figure(fechas, z_scores, ewma_r, analito, nivel_activo)
+        st.plotly_chart(fig_ewma, use_container_width=True)
+
+        st.markdown('<div class="sec-head">Gráfico CUSUM (barras)</div>', unsafe_allow_html=True)
+        fig_cusum = build_cusum_figure(fechas, cusum_r, analito, nivel_activo)
+        st.plotly_chart(fig_cusum, use_container_width=True)
+
+        # ── Tabla de datos ───────────────────────────────────
+        st.markdown('<div class="sec-head">Tabla detallada EWMA / CUSUM</div>',
+                    unsafe_allow_html=True)
+        tabla_ec = pd.DataFrame({
+            "Fecha":      [f.strftime("%d/%m/%Y") for f in fechas],
+            "Z-Score":    [round(z, 3) for z in z_scores],
+            "EWMA":       [round(e, 4) for e in ewma_r["ewma"]],
+            "Estado EWMA":[e for e in ewma_r["estados"]],
+            "CUSUM+":     [round(c, 3) for c in cusum_r["cusum_pos"]],
+            "CUSUM−":     [round(c, 3) for c in cusum_r["cusum_neg"]],
+            "Alarma":     ["🔴 SÍ" if a else "✅ No" for a in cusum_r["alarma_any"]],
+        })
+        tabla_ec["Estado EWMA"] = tabla_ec["Estado EWMA"].apply(estado_badge)
+        st.write(tabla_ec.to_html(escape=False, index=False), unsafe_allow_html=True)
+
+        # ── Interpretación técnica ───────────────────────────
+        st.markdown('<div class="sec-head">Interpretación técnica</div>',
+                    unsafe_allow_html=True)
+        col_i1, col_i2 = st.columns(2)
+        with col_i1:
+            st.markdown(f"""
+**EWMA (λ={lam})**
+- Detecta desplazamientos de la media de forma continua
+- λ pequeño → mayor memoria histórica → más sensible a derivas lentas
+- λ grande → más peso al último punto → respuesta más rápida
+- Límites: ±2σ (advertencia) y ±3σ (acción)
+- Último valor: **{ewma_r['ultimo_ewma']:+.4f}σ**
+""")
+        with col_i2:
+            tipo_d = cusum_r.get("tipo_deriva")
+            tipo_str = f"**{tipo_d}**" if tipo_d else "no detectada"
+            st.markdown(f"""
+**CUSUM (k={cusum_k}, h={cusum_h})**
+- Acumula desviaciones respecto a la media objetivo
+- k=0.5σ detecta desplazamientos de 1σ con ARL≈ 43 puntos
+- h=5 es el estándar CLSI para laboratorio clínico
+- Deriva: {tipo_str}
+- Primera alarma: punto **{cusum_r['primera_alarma']+1 if cusum_r['primera_alarma'] is not None else '—'}**
+""")
+
+        # ── Comparativa con Westgard ─────────────────────────
+        st.markdown('<div class="sec-head">Comparativa EWMA/CUSUM vs Westgard</div>',
+                    unsafe_allow_html=True)
+        n_violaciones_wg = len(df_series[df_series["Estado"] != "Verde"])
+        ewma_detecta = ewma_estado != "Verde"
+        cusum_detecta = cusum_alarma
+
+        comp_data = {
+            "Método":         ["Westgard (1_3s/2_2s/4_1s)", "EWMA", "CUSUM"],
+            "Alarma activa":  [
+                "🔴 Sí" if n_violaciones_wg > 0 else "✅ No",
+                "🔴 Sí" if ewma_detecta else "✅ No",
+                "🔴 Sí" if cusum_detecta else "✅ No",
+            ],
+            "Tipo detección": [
+                "Reglas discretas por punto",
+                "Promedio ponderado exponencial",
+                "Suma acumulada de desviaciones",
+            ],
+            "Sensibilidad":   [
+                "Alta para errores aleatorios grandes",
+                "Alta para derivas lentas y sostenidas",
+                "Alta para desplazamientos de la media",
+            ],
+        }
+        st.write(pd.DataFrame(comp_data).to_html(escape=False, index=False),
+                 unsafe_allow_html=True)
+
+# ── TAB 3 (antes TAB 2): SIGMA METRICS ───────────────────────
 with tab_sigma:
     st.markdown("### 📈 Sigma Metrics — Evaluación de Calidad Analítica")
     st.caption("Sigma = (TEa% − Sesgo%) / CV%  ·  TEa según criterios CLIA  ·  Desglosado por nivel.")
@@ -1318,6 +1376,7 @@ with tab_sigma:
             if sub.empty: continue
             sig=calcular_sigma(sub,tea_editado.get(an,TEA_DEFAULT))
             if sig: sigma_data.append({"analito":an,"nivel":niv,"nivel_label":NIVELES.get(niv,NIVELES["N"])["label"],**sig})
+
     if not sigma_data:
         st.warning("Sin datos suficientes.")
     else:
@@ -1402,18 +1461,6 @@ with tab_biorad:
             u=sub.iloc[-1]
             if u["Estado"]!="Verde":
                 hay_alarmas=True; render_kb_panel(an,u["Estado"],u["Regla_Violada"],niv)
-    # R-4s en tab Bio-Rad
-    for an in analitos_ls:
-        r4s_br=evaluar_r4s(df_all,an,f_min,f_max)
-        if r4s_br:
-            hay_alarmas=True
-            st.markdown(f"""<div class="biorad-card-red">
-                <b>⚡ R-4s activa — {an}</b><br>
-                <small>Nivel {r4s_br['label_a']} (Z={r4s_br['z_a']:+.2f}) vs
-                Nivel {r4s_br['label_b']} (Z={r4s_br['z_b']:+.2f}) —
-                Diferencia {r4s_br['diferencia']:.2f}σ<br>
-                Acción: repetir ambos niveles con viales nuevos. No recalibrar como primer paso.</small>
-            </div>""", unsafe_allow_html=True)
     if not hay_alarmas:
         st.success("✅ No hay alarmas activas. ¡El laboratorio opera correctamente!")
     st.markdown("---")
@@ -1429,13 +1476,12 @@ with tab_chat:
     modelo_activo=st.session_state.get("gemini_model_active","models/gemini-2.5-flash")
     st.markdown(
         f'<div class="gemini-banner">🟢 <b>Google Gemini activo</b> · Modelo: <code>{modelo_activo}</code> · '
-        f'Historial: {MAX_TURNS} turnos · Base de conocimiento Bio-Rad + R-4s integrados.</div>',
+        f'Historial: {MAX_TURNS} turnos · Base de conocimiento Bio-Rad integrada.</div>',
         unsafe_allow_html=True)
     if "messages" not in st.session_state:
         st.session_state["messages"]=[{"role":"assistant","content":(
-            "¡Hola! Soy el **Asistente AIQC v4.10** con regla **R-4s** y base **Bio-Rad** integradas.\n\n"
+            "¡Hola! Soy el **Asistente AIQC v4.9** con base de conocimiento **Bio-Rad** integrada.\n\n"
             "Prueba a preguntarme:\n"
-            "- *¿Hay alguna alarma R-4s activa?*\n"
             "- *¿Por qué puede fallar el control de ALT en el nivel Patológico Alto?*\n"
             "- *¿Qué hago si el Potasio da 1_3s en el nivel Normal?*\n"
             "- *Dame un plan correctivo completo para las alarmas activas*"
@@ -1447,7 +1493,7 @@ with tab_chat:
         st.session_state["messages"].append({"role":"user","content":prompt})
         with st.chat_message("user",avatar="👤"): st.markdown(prompt)
         with st.chat_message("assistant",avatar="🤖"):
-            with st.spinner("Analizando datos, R-4s y Base Bio-Rad…"):
+            with st.spinner("Analizando datos y consultando Base Bio-Rad…"):
                 resp=ia_responde_gemini(prompt,st.session_state["messages"],df_all,analitos_ls,f_min,f_max)
                 st.markdown(resp)
         st.session_state["messages"].append({"role":"assistant","content":resp})
@@ -1455,24 +1501,18 @@ with tab_chat:
         st.session_state["messages"]=[st.session_state["messages"][0]]; st.rerun()
 
 
-# ── TAB 5: REGISTRO + CSV + PDF ──────────────────────────────
+# ── TAB 5: REGISTRO ───────────────────────────────────────────
 with tab_log:
-    col_ttl, col_csv, col_pdf = st.columns([3, 1, 1])
-
+    col_ttl,col_pdf=st.columns([3,1])
     with col_ttl:
         st.markdown("### 📝 Registro de Incidencias y Trazabilidad")
-        st.caption("Acciones persistentes en SQLite · Exporta en CSV o PDF.")
+        st.caption("Acciones persistentes en SQLite · Desglose por nivel de control.")
 
-    lab_nombre = st.secrets.get("lab", {}).get("nombre", "LAB. CENTRAL")
-
-    # Placeholder para el botón CSV (se rellena después de calcular df_log)
-    with col_csv:
-        st.markdown("<br>", unsafe_allow_html=True)
-        csv_placeholder = st.empty()
+    lab_nombre = st.secrets.get("lab",{}).get("nombre","LAB. CENTRAL")
 
     with col_pdf:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("📄 Descargar PDF", use_container_width=True, type="primary"):
+        st.markdown("<br>",unsafe_allow_html=True)
+        if st.button("📄 Descargar PDF",use_container_width=True,type="primary"):
             with st.spinner("Generando informe con guía Bio-Rad…"):
                 try:
                     pdf_bytes=generar_pdf(df_all,analitos_ls,data_src,f_min,f_max,lab_nombre)
@@ -1482,7 +1522,6 @@ with tab_log:
                     st.success("✅ Informe generado.")
                 except Exception as e: st.error(f"Error: {e}")
 
-    # Calcular violaciones
     niveles_globales_log=sorted(df_all["Nivel"].unique())
     all_log_frames=[]
     for an in analitos_ls:
@@ -1491,23 +1530,15 @@ with tab_log:
                                         (df_all["Fecha"]>=pd.Timestamp(f_min))&
                                         (df_all["Fecha"]<=pd.Timestamp(f_max))].copy())
             if not sub.empty:
-                sub["_nivel_label"]=NIVELES.get(niv,NIVELES["N"])["label"]
-                all_log_frames.append(sub)
+                sub["_nivel_label"]=NIVELES.get(niv,NIVELES["N"])["label"]; all_log_frames.append(sub)
 
     df_full_log=pd.concat(all_log_frames) if all_log_frames else pd.DataFrame()
     df_log=df_full_log[df_full_log["Estado"]!="Verde"].copy().reset_index(drop=True) if not df_full_log.empty else pd.DataFrame()
 
     if df_log.empty:
         st.success("✅ Sin violaciones en el período seleccionado.")
-        # CSV vacío igualmente disponible
-        with csv_placeholder:
-            st.download_button("⬇️ Exportar CSV", data=b"Sin violaciones",
-                               file_name="AIQC_sin_incidencias.csv",
-                               mime="text/csv", use_container_width=True, disabled=True)
     else:
-        acciones_db = load_acciones(db_con)
-
-        # Tabla de incidencias
+        acciones_db=load_acciones(db_con)
         hcols=st.columns([1.4,2.0,1.4,1.1,1.2,1.3,1.4,1.4,1.3])
         for c,lbl in zip(hcols,["📅 Fecha","🔬 Analito","Nivel","Valor",
                                   "Z-Score","Regla","Score","Estado","✅ Acción"]):
@@ -1529,8 +1560,6 @@ with tab_log:
             if nuevo!=prev: save_accion(db_con,key,nuevo)
 
         st.markdown("<hr style='border-color:#E2E8F0'>",unsafe_allow_html=True)
-
-        # Métricas
         acciones_db=load_acciones(db_con)
         claves_log=[f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label','N')}_{idx}"
                     for idx,row in df_log.iterrows()]
@@ -1539,20 +1568,6 @@ with tab_log:
         m1.metric("Total violaciones",total); m2.metric("Acciones tomadas ✅",hechas)
         m3.metric("Pendientes ⏳",pend); m4.metric("% completado",f"{int(hechas/total*100) if total else 0}%")
 
-        # ── Botón CSV (rellena el placeholder) ───────────────
-        csv_bytes = generar_csv(df_log, acciones_db, claves_log)
-        fname_csv = f"AIQC_Incidencias_{f_min.strftime('%Y%m%d')}_{f_max.strftime('%Y%m%d')}.csv"
-        with csv_placeholder:
-            st.download_button(
-                label="⬇️ Exportar CSV",
-                data=csv_bytes,
-                file_name=fname_csv,
-                mime="text/csv",
-                use_container_width=True,
-                help="CSV con separador ';' y UTF-8 BOM — compatible con Excel español.",
-            )
-
-        # Resumen por nivel
         st.markdown('<div class="sec-head">Resumen por nivel</div>',unsafe_allow_html=True)
         nivel_cols=st.columns(len(niveles_globales_log))
         for col,niv in zip(nivel_cols,niveles_globales_log):
