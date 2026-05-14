@@ -1004,19 +1004,43 @@ def fig_to_png_bytes(fig):
 # ==============================================================
 #  9. PDF
 # ==============================================================
+def pdf_txt(s: str) -> str:
+    """Convierte caracteres Unicode no soportados por Helvetica a equivalentes ASCII."""
+    reemplazos = {
+        "—": "-", "–": "-", "−": "-",
+        "±": "+/-", "×": "x", "÷": "/",
+        "σ": "sigma", "μ": "u", "α": "a", "β": "b",
+        "→": "->", "←": "<-", "↑": "(+)", "↓": "(-)",
+        "≥": ">=", "≤": "<=", "≠": "!=", "≈": "~",
+        "°": "o",
+        "\u2019": "'", "\u2018": "'", "\u201C": '"', "\u201D": '"',
+        "\u2026": "...",
+        "🔴": "[ROJO]", "🟡": "[AMBAR]", "🟢": "[VERDE]",
+        "✅": "[OK]", "⚠️": "[WARN]", "❌": "[ERROR]",
+        "🏆": "[*]", "📋": "", "📄": "", "📈": "",
+        "🔬": "", "🧪": "", "📖": "", "🔍": "",
+        "•": "-", "·": ".",
+    }
+    for orig, repl in reemplazos.items():
+        s = s.replace(orig, repl)
+    return s.encode("latin-1", errors="replace").decode("latin-1")
+
 def generar_pdf(df_all,analitos,fuente):
     pdf=FPDF(); pdf.set_auto_page_break(auto=True,margin=15); pdf.add_page()
     pdf.set_fill_color(26,111,196); pdf.rect(0,0,210,36,"F")
     pdf.set_font("Helvetica","B",18); pdf.set_text_color(255,255,255); pdf.ln(8)
-    pdf.cell(0,10,"AIQC – Informe de Incidencias de Calidad",ln=True,align="C")
+    pdf.cell(0,10,"AIQC - Informe de Incidencias de Calidad",ln=True,align="C")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(220,235,255)
-    pdf.cell(0,6,f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  Fuente: {fuente}  |  Analitos: {', '.join(analitos)}",ln=True,align="C")
+    pdf.cell(0,6,
+             pdf_txt(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  "
+                     f"Fuente: {fuente}  |  Analitos: {', '.join(analitos)}"),
+             ln=True,align="C")
     pdf.ln(10)
     niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
 
     def sec(txt):
         pdf.set_font("Helvetica","B",12); pdf.set_text_color(26,111,196)
-        pdf.cell(0,8,txt,ln=True)
+        pdf.cell(0,8,pdf_txt(txt),ln=True)
         pdf.set_draw_color(13,158,110); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(3)
 
     sec("1. Resumen Ejecutivo por Nivel de Control")
@@ -1025,16 +1049,21 @@ def generar_pdf(df_all,analitos,fuente):
         df_ev=pd.concat([f for f in frames if not f.empty])
         if df_ev.empty: continue
         total=len(df_ev); rojos=int((df_ev["Estado"]=="Rojo").sum())
-        ambar=int((df_ev["Estado"]=="Ámbar").sum()); ok=int((df_ev["Estado"]=="Verde").sum())
+        ambar=int((df_ev["Estado"]=="Ambar").sum()); ok=int((df_ev["Estado"]=="Verde").sum())
         pdf.set_font("Helvetica","B",10); pdf.set_text_color(28,43,58)
-        pdf.cell(0,7,f"Nivel: {NIVELES.get(niv,NIVELES['N'])['label']}",ln=True)
+        pdf.cell(0,7,pdf_txt(f"Nivel: {NIVELES.get(niv,NIVELES['N'])['label']}"),ln=True)
         pdf.set_font("Helvetica","",9)
-        pdf.cell(0,6,f"  Total: {total}  |  Verde: {ok} ({100*ok//total if total else 0}%)  |  Ambar: {ambar}  |  Rojo: {rojos}",ln=True)
+        pdf.cell(0,6,
+                 pdf_txt(f"  Total: {total}  |  Verde: {ok} ({100*ok//total if total else 0}%)"
+                         f"  |  Ambar: {ambar}  |  Rojo: {rojos}"),
+                 ln=True)
         pdf.ln(2)
 
     sec("2. Estado por Analito y Nivel  [Z = (x - media) / SD]")
     pdf.set_font("Helvetica","",8); pdf.set_text_color(80,80,80)
-    pdf.cell(0,5,REGLAS_DESC,ln=True); pdf.ln(2)
+    pdf.cell(0,5,pdf_txt("1_3s: +/-3SD -> Rojo | 2_2s: 2 consec +/-2SD -> Rojo | "
+                         "4_1s: 4 consec +/-1SD -> Ambar | 10_x: 10 consec mismo lado -> Ambar"),
+             ln=True); pdf.ln(2)
     col_w=[40,26,20,22,22,26,22,20]; hdrs=["Analito","Nivel","Valor","Z-Score","Score","Regla","Estado","N pts"]
     pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
     for w,h in zip(col_w,hdrs): pdf.cell(w,8,h,border=1,fill=True)
@@ -1045,12 +1074,17 @@ def generar_pdf(df_all,analitos,fuente):
             if sub.empty: continue
             u=sub.iloc[-1]; niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
             if u["Estado"]=="Rojo":    pdf.set_fill_color(254,226,226); pdf.set_text_color(153,27,27)
-            elif u["Estado"]=="Ámbar": pdf.set_fill_color(254,243,199); pdf.set_text_color(146,64,14)
+            elif u["Estado"]=="Ambar": pdf.set_fill_color(254,243,199); pdf.set_text_color(146,64,14)
             else:                       pdf.set_fill_color(209,250,229); pdf.set_text_color(6,95,70)
             pdf.set_font("Helvetica","",8)
-            for w,v in zip(col_w,[an[:22],niv_label[:14],str(u["Valor"]),f"{u['Z_Score']:+.2f}",
-                                   f"{int(u['Score_Riesgo'])}/100",u["Regla_Violada"],u["Estado"],str(len(sub))]):
-                pdf.cell(w,7,str(v),border=1,fill=True)
+            for w,v in zip(col_w,[
+                an[:22], niv_label[:14], str(u["Valor"]),
+                pdf_txt(f"{u['Z_Score']:+.2f}"),
+                f"{int(u['Score_Riesgo'])}/100",
+                pdf_txt(u["Regla_Violada"]),
+                u["Estado"], str(len(sub))
+            ]):
+                pdf.cell(w,7,pdf_txt(str(v)),border=1,fill=True)
             pdf.ln()
     pdf.ln(5)
 
@@ -1065,8 +1099,11 @@ def generar_pdf(df_all,analitos,fuente):
                 tmp=f"/tmp/lj_{an.replace(' ','_').replace('(','').replace(')','_')}_{niv}.png"
                 open(tmp,"wb").write(png)
                 pdf.set_font("Helvetica","B",10); pdf.set_text_color(28,43,58)
-                pdf.cell(0,7,f"{an} — Nivel: {niv_label}",ln=True)
+                pdf.cell(0,7,pdf_txt(f"{an} - Nivel: {niv_label}"),ln=True)
                 pdf.image(tmp,x=10,w=190); pdf.ln(4)
+            else:
+                pdf.set_font("Helvetica","I",9); pdf.set_text_color(100,116,139)
+                pdf.cell(0,7,pdf_txt(f"[Grafico no disponible para {an} / {niv_label} - instala kaleido]"),ln=True)
     pdf.ln(3)
 
     sec("4. Guia Bio-Rad de Acciones Correctivas")
@@ -1082,21 +1119,27 @@ def generar_pdf(df_all,analitos,fuente):
                 if not kb: continue
                 niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
                 pdf.set_font("Helvetica","B",10)
-                pdf.set_text_color(153,27,27) if u["Estado"]=="Rojo" else pdf.set_text_color(146,64,14)
-                pdf.cell(0,7,f"{'Rojo' if u['Estado']=='Rojo' else 'Ambar'} — {an} [{niv_label}] — Regla {u['Regla_Violada']}",ln=True)
+                if u["Estado"]=="Rojo": pdf.set_text_color(153,27,27)
+                else:                   pdf.set_text_color(146,64,14)
+                estado_txt="ROJO" if u["Estado"]=="Rojo" else "AMBAR"
+                pdf.cell(0,7,
+                         pdf_txt(f"{estado_txt} - {an} [{niv_label}] - Regla {u['Regla_Violada']}"),
+                         ln=True)
                 pdf.set_font("Helvetica","",8); pdf.set_text_color(28,43,58)
-                pdf.cell(0,5,f"Producto: {kb['producto']}",ln=True)
-                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Causas:",ln=True)
+                pdf.cell(0,5,pdf_txt(f"Producto: {kb['producto']}"),ln=True)
+                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Causas probables:",ln=True)
                 pdf.set_font("Helvetica","",8)
-                for c in kb["causas_comunes"][:3]: pdf.multi_cell(0,5,f"  - {c}")
-                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Acciones:",ln=True)
+                for c in kb["causas_comunes"][:3]:
+                    pdf.multi_cell(0,5,pdf_txt(f"  - {c}"))
+                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Acciones correctivas:",ln=True)
                 pdf.set_font("Helvetica","",8)
                 for a in (kb["acciones_1_3s"] if u["Estado"]=="Rojo" else kb["acciones_warn"])[:4]:
-                    pdf.multi_cell(0,5,f"  - {a.replace('🔴','').replace('🟡','').strip()}")
-                pdf.cell(0,5,f"Ref: {kb['referencia']}",ln=True); pdf.ln(3)
+                    pdf.multi_cell(0,5,pdf_txt(f"  - {a}"))
+                pdf.cell(0,5,pdf_txt(f"Interferencias: {kb['interferencias'][:90]}"),ln=True)
+                pdf.cell(0,5,pdf_txt(f"Ref: {kb['referencia']}"),ln=True); pdf.ln(3)
     if not alarmas:
         pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70)
-        pdf.cell(0,7,"Sin alarmas activas.",ln=True)
+        pdf.cell(0,7,"Sin alarmas activas - no se requieren acciones correctivas.",ln=True)
     pdf.ln(4)
     pdf.set_draw_color(226,232,240); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(2)
     pdf.set_font("Helvetica","I",8); pdf.set_text_color(100,116,139)
