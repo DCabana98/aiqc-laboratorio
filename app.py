@@ -1,6 +1,6 @@
 # ==============================================================
 #  AIQC – Artificial Intelligence for Quality Control
-#  Versión: 4.9 – Rediseño SaaS médico + PDF mejorado
+#  Versión: 4.9 – Rediseño SaaS médico + PDF mejorado + Bio-Rad KB
 #  Deploy:  streamlit run app.py
 #  Deps:    pip install streamlit plotly pandas numpy fpdf2 openpyxl google-generativeai kaleido
 # ==============================================================
@@ -438,59 +438,66 @@ GRUPOS_ANALITICOS = {
     "Hematología":           ["Hemoglobina"],
 }
 
-def buscar_kb(analito,estado):
+def buscar_kb(analito, estado):
     if analito in BIORAD_KB: return BIORAD_KB[analito]
-    an_norm=analito.lower()
+    an_norm = analito.lower()
     for key in BIORAD_KB:
         if an_norm in key.lower() or key.lower() in an_norm: return BIORAD_KB[key]
     return None
 
-def render_kb_panel(analito,estado,regla,nivel):
-    kb=buscar_kb(analito,estado)
-    nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
-    card_class="biorad-card-red" if estado=="Rojo" else "biorad-card-amber" if estado=="Ámbar" else "biorad-card"
+def render_kb_panel(analito, estado, regla, nivel):
+    kb = buscar_kb(analito, estado)
+    nivel_label = NIVELES.get(nivel, NIVELES["N"])["label"]
+    card_class = ("biorad-card-red" if estado=="Rojo"
+                  else "biorad-card-amber" if estado=="Ámbar"
+                  else "biorad-card")
     if kb is None:
-        st.markdown(f'<div class="{card_class}"><b>Bio-Rad KB:</b> No hay ficha para <b>{analito}</b>. '
-                    f'Consulta en <a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet</a>.</div>',
-                    unsafe_allow_html=True); return
-    ico="🔴" if estado=="Rojo" else "🟡"
+        st.markdown(
+            f'<div class="{card_class}"><b>Bio-Rad KB:</b> No hay ficha para <b>{analito}</b>. '
+            f'Consulta en <a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet</a>.</div>',
+            unsafe_allow_html=True); return
+    ico = "🔴" if estado=="Rojo" else "🟡"
     st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
-    st.markdown(f"#### {ico} Guía Bio-Rad — **{analito}** · {nivel_label} · Regla `{regla}`\n*Producto: {kb['producto']} · Grupo: {kb['grupo']}*")
-    col1,col2=st.columns(2)
+    st.markdown(f"#### {ico} Guía Bio-Rad — **{analito}** · {nivel_label} · Regla `{regla}`\n"
+                f"*Producto: {kb['producto']} · Grupo: {kb['grupo']}*")
+    col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Causas más probables:**")
         for c in kb["causas_comunes"]: st.markdown(f"- {c}")
-        if estado=="Ámbar" and any(r in regla for r in ["10_x","4_1s","2_2s"]):
+        if estado == "Ámbar" and any(r in regla for r in ["10_x","4_1s","2_2s"]):
             st.markdown("**Causas de deriva:**")
             for c in kb.get("causas_deriva",[]): st.markdown(f"- {c}")
     with col2:
-        acciones=kb["acciones_1_3s"] if estado=="Rojo" else kb["acciones_warn"]
+        acciones = kb["acciones_1_3s"] if estado=="Rojo" else kb["acciones_warn"]
         st.markdown("**Acciones correctivas:**")
         for a in acciones: st.markdown(f"- {a}")
-    st.markdown(f"**Interferencias:** {kb['interferencias']}\n\n**Estabilidad:** {kb['estabilidad_biorad']}\n\n**Referencia:** {kb['referencia']}")
-    st.markdown(f'<small><a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet Bio-Rad</a></small>',unsafe_allow_html=True)
-    st.markdown('</div>',unsafe_allow_html=True)
+    st.markdown(f"**Interferencias:** {kb['interferencias']}\n\n"
+                f"**Estabilidad:** {kb['estabilidad_biorad']}\n\n"
+                f"**Referencia:** {kb['referencia']}")
+    st.markdown(f'<small><a href="https://myeinserts-app.qcnet.com/home" target="_blank">'
+                f'myeInserts QCNet Bio-Rad</a></small>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ==============================================================
 #  CONSTANTES DE NIVELES
 # ==============================================================
 NIVELES = {
-    "N":  {"label":"Normal",          "pill":"nivel-N",  "icon":"🔵"},
-    "PB": {"label":"Patológico Bajo",  "pill":"nivel-PB", "icon":"🟡"},
-    "PA": {"label":"Patológico Alto",  "pill":"nivel-PA", "icon":"🔴"},
+    "N":  {"label":"Normal",         "pill":"nivel-N",  "icon":"🔵"},
+    "PB": {"label":"Patológico Bajo", "pill":"nivel-PB", "icon":"🟡"},
+    "PA": {"label":"Patológico Alto", "pill":"nivel-PA", "icon":"🔴"},
 }
 
 def nivel_badge(codigo):
-    cfg=NIVELES.get(codigo,NIVELES["N"])
+    cfg = NIVELES.get(codigo, NIVELES["N"])
     return f'<span class="nivel-pill {cfg["pill"]}">{cfg["icon"]} {cfg["label"]}</span>'
 
 
 # ==============================================================
 #  1. GOOGLE GEMINI
 # ==============================================================
-GEMINI_MODELS=["models/gemini-2.5-flash","models/gemini-2.0-flash","models/gemini-2.0-flash-lite"]
-GEMINI_SYSTEM=(
+GEMINI_MODELS = ["models/gemini-2.5-flash","models/gemini-2.0-flash","models/gemini-2.0-flash-lite"]
+GEMINI_SYSTEM = (
     "Eres AIQC, el sistema automatizado de Control de Calidad de un laboratorio clínico. "
     "Usas controles Bio-Rad (Liquichek y Lyphochek). "
     "REGLA ABSOLUTA: Cada respuesta DEBE incluir los valores numéricos reales del laboratorio. "
@@ -498,7 +505,7 @@ GEMINI_SYSTEM=(
     "NUNCA respondas de forma genérica. Respondes en español, técnico y conciso. "
     "Usas Markdown. Z-Score: Z = (x - media) / SD."
 )
-GEMINI_CFG={"temperature":0.2,"max_output_tokens":2048,"top_p":0.85}
+GEMINI_CFG = {"temperature":0.2,"max_output_tokens":2048,"top_p":0.85}
 
 def get_api_key():
     return (st.secrets.get("gemini",{}).get("api_key") or
@@ -509,11 +516,11 @@ def get_api_key():
 #  2. AUTENTICACIÓN
 # ==============================================================
 def get_credentials():
-    try: return st.secrets["auth"]["user"],st.secrets["auth"]["password"]
+    try: return st.secrets["auth"]["user"], st.secrets["auth"]["password"]
     except KeyError:
         st.error("Crea `.streamlit/secrets.toml` con [auth] user y password."); st.stop()
 
-VALID_USER,VALID_PASS=get_credentials()
+VALID_USER, VALID_PASS = get_credentials()
 
 def render_login():
     st.markdown("""<div class="login-card">
@@ -521,14 +528,14 @@ def render_login():
         <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#1A6FC4;margin-bottom:4px">AIQC</div>
         <div style="text-align:center;font-size:.86rem;color:#64748B;margin-bottom:28px">
             Artificial Intelligence for Quality Control · v4.9
-        </div></div>""",unsafe_allow_html=True)
-    _,mid,_=st.columns([1,1.8,1])
+        </div></div>""", unsafe_allow_html=True)
+    _, mid, _ = st.columns([1,1.8,1])
     with mid:
-        st.markdown("<br>",unsafe_allow_html=True)
-        user=st.text_input("Usuario",placeholder="admin",key="_u")
-        pwd=st.text_input("Contraseña",type="password",placeholder="••••••",key="_p")
-        st.markdown("<br>",unsafe_allow_html=True)
-        if st.button("Acceder al sistema →",use_container_width=True,type="primary"):
+        st.markdown("<br>", unsafe_allow_html=True)
+        user = st.text_input("Usuario", placeholder="admin", key="_u")
+        pwd  = st.text_input("Contraseña", type="password", placeholder="••••••", key="_p")
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Acceder al sistema →", use_container_width=True, type="primary"):
             if user==VALID_USER and pwd==VALID_PASS:
                 st.session_state["auth"]=True; st.rerun()
             else: st.error("Credenciales incorrectas.")
@@ -540,25 +547,28 @@ if not st.session_state.get("auth"):
 # ==============================================================
 #  3. SQLITE
 # ==============================================================
-DB_PATH="aiqc_acciones.db"
+DB_PATH = "aiqc_acciones.db"
 
 def init_db():
-    con=sqlite3.connect(DB_PATH,check_same_thread=False)
+    con = sqlite3.connect(DB_PATH, check_same_thread=False)
     con.execute("CREATE TABLE IF NOT EXISTS acciones (clave TEXT PRIMARY KEY, hecha INTEGER DEFAULT 0, ts TEXT)")
     con.commit(); return con
 
-def load_acciones(con): return {r[0]:bool(r[1]) for r in con.execute("SELECT clave,hecha FROM acciones").fetchall()}
-def save_accion(con,clave,hecha):
-    con.execute("INSERT OR REPLACE INTO acciones VALUES (?,?,datetime('now'))",(clave,int(hecha))); con.commit()
+def load_acciones(con):
+    return {r[0]:bool(r[1]) for r in con.execute("SELECT clave,hecha FROM acciones").fetchall()}
 
-if "db_con" not in st.session_state: st.session_state["db_con"]=init_db()
-db_con=st.session_state["db_con"]
+def save_accion(con, clave, hecha):
+    con.execute("INSERT OR REPLACE INTO acciones VALUES (?,?,datetime('now'))",(clave,int(hecha)))
+    con.commit()
+
+if "db_con" not in st.session_state: st.session_state["db_con"] = init_db()
+db_con = st.session_state["db_con"]
 
 
 # ==============================================================
 #  4. DATOS DEMO
 # ==============================================================
-NIVELES_DEMO={
+NIVELES_DEMO = {
     "Potasio (K+)":       {"N":(4.5,0.15),"PB":(2.8,0.12),"PA":(6.2,0.18)},
     "ALT (Transaminasa)": {"N":(35.0,2.5),"PB":(12.0,1.5),"PA":(120.0,8.0)},
 }
@@ -566,13 +576,13 @@ NIVELES_DEMO={
 @st.cache_data(show_spinner=False)
 def build_demo(ref_date=""):
     np.random.seed(2026)
-    today=pd.Timestamp(ref_date).replace(hour=0,minute=0,second=0,microsecond=0)
-    dates=[today-timedelta(days=29-i) for i in range(30)]
-    rows=[]
-    for analito,niveles in NIVELES_DEMO.items():
-        for nivel_cod,(media,sd) in niveles.items():
-            for i,d in enumerate(dates):
-                drift=2.5*(i-24)*0.65 if analito=="ALT (Transaminasa)" and nivel_cod=="PA" and i>=25 else 0.0
+    today = pd.Timestamp(ref_date).replace(hour=0,minute=0,second=0,microsecond=0)
+    dates = [today - timedelta(days=29-i) for i in range(30)]
+    rows  = []
+    for analito, niveles in NIVELES_DEMO.items():
+        for nivel_cod, (media, sd) in niveles.items():
+            for i, d in enumerate(dates):
+                drift = 2.5*(i-24)*0.65 if analito=="ALT (Transaminasa)" and nivel_cod=="PA" and i>=25 else 0.0
                 rows.append({"Fecha":d,"Analito":analito,"Nivel":nivel_cod,
                               "Valor":round(np.random.normal(media+drift,sd*0.85),3),
                               "Media_Objetivo":media,"SD_Objetivo":sd,"Lote":f"LOT-{2026+i//10}"})
@@ -582,7 +592,7 @@ def build_demo(ref_date=""):
 # ==============================================================
 #  5. CARGA CSV/XLSX
 # ==============================================================
-COL_SYNONYMS={
+COL_SYNONYMS = {
     "Fecha":["fecha","date","dia","timestamp","time","datetime"],
     "Analito":["analito","analyte","test","prueba","parametro","magnitud"],
     "Nivel":["nivel","level","control_level","qc_level","tipo_control"],
@@ -596,51 +606,52 @@ def _norm(s):
     return s.lower().strip().translate(str.maketrans("áéíóúàèìòùäëïöüÁÉÍÓÚ","aeiouaeiouaeiouAEIOU"))
 
 def normalizar_df(df):
-    df_n={_norm(c):c for c in df.columns}; rename={}
-    for interno,sins in COL_SYNONYMS.items():
+    df_n = {_norm(c):c for c in df.columns}; rename = {}
+    for interno, sins in COL_SYNONYMS.items():
         for s in sins:
             if s in df_n: rename[df_n[s]]=interno; break
         if interno not in rename.values():
             for cn,co in df_n.items():
                 if any(s in cn or cn in s for s in sins): rename[co]=interno; break
-    df2=df.rename(columns=rename)
-    obligatorias=["Fecha","Analito","Valor","Media_Objetivo","SD_Objetivo"]
-    faltan=[c for c in obligatorias if c not in df2.columns]
-    if faltan: return None,f"Columnas no encontradas: {', '.join(faltan)}."
+    df2 = df.rename(columns=rename)
+    obligatorias = ["Fecha","Analito","Valor","Media_Objetivo","SD_Objetivo"]
+    faltan = [c for c in obligatorias if c not in df2.columns]
+    if faltan: return None, f"Columnas no encontradas: {', '.join(faltan)}."
     if "Nivel" not in df2.columns: df2["Nivel"]="N"
     if "Lote"  not in df2.columns: df2["Lote"]="N/A"
     df2["Fecha"]=pd.to_datetime(df2["Fecha"],dayfirst=True,errors="coerce")
     df2["Valor"]=pd.to_numeric(df2["Valor"],errors="coerce")
     df2["Media_Objetivo"]=pd.to_numeric(df2["Media_Objetivo"],errors="coerce")
     df2["SD_Objetivo"]=pd.to_numeric(df2["SD_Objetivo"],errors="coerce")
-    nivel_map={"n":"N","normal":"N","nivel 1":"N","nivel1":"N","n1":"N","1":"N",
-               "pb":"PB","patologico bajo":"PB","bajo":"PB","nivel 2":"PB","n2":"PB","2":"PB",
-               "pa":"PA","patologico alto":"PA","alto":"PA","nivel 3":"PA","n3":"PA","3":"PA"}
-    df2["Nivel"]=df2["Nivel"].astype(str).str.lower().str.strip().map(lambda x:nivel_map.get(x,"N"))
-    df2=df2.dropna(subset=obligatorias)
-    if df2.empty: return None,"Sin filas válidas."
-    return df2[obligatorias+["Nivel","Lote"]].reset_index(drop=True),""
+    nivel_map = {"n":"N","normal":"N","nivel 1":"N","nivel1":"N","n1":"N","1":"N",
+                 "pb":"PB","patologico bajo":"PB","bajo":"PB","nivel 2":"PB","n2":"PB","2":"PB",
+                 "pa":"PA","patologico alto":"PA","alto":"PA","nivel 3":"PA","n3":"PA","3":"PA"}
+    df2["Nivel"] = df2["Nivel"].astype(str).str.lower().str.strip().map(lambda x: nivel_map.get(x,"N"))
+    df2 = df2.dropna(subset=obligatorias)
+    if df2.empty: return None, "Sin filas válidas."
+    return df2[obligatorias+["Nivel","Lote"]].reset_index(drop=True), ""
 
 def leer_archivo(uploaded):
-    name=uploaded.name.lower()
+    name = uploaded.name.lower()
     try:
-        raw=pd.read_csv(uploaded,sep=None,engine="python") if name.endswith(".csv") else pd.read_excel(uploaded)
+        raw = pd.read_csv(uploaded,sep=None,engine="python") if name.endswith(".csv") else pd.read_excel(uploaded)
         return normalizar_df(raw)
-    except Exception as e: return None,f"Error: {e}"
+    except Exception as e: return None, f"Error: {e}"
 
 
 # ==============================================================
 #  6. WESTGARD
 # ==============================================================
-REGLAS_DESC="1_3s: +/-3SD -> Rojo | 2_2s: 2 consec +/-2SD -> Rojo | 4_1s: 4 consec +/-1SD -> Ambar | 10_x: 10 consec mismo lado -> Ambar"
+REGLAS_DESC = "1_3s: +/-3SD -> Rojo | 2_2s: 2 consec +/-2SD -> Rojo | 4_1s: 4 consec +/-1SD -> Ambar | 10_x: 10 consec mismo lado -> Ambar"
 
 def evaluar_westgard(serie):
-    df=serie.copy().sort_values("Fecha").reset_index(drop=True)
-    df["Z_Score"]=(df["Valor"]-df["Media_Objetivo"])/df["SD_Objetivo"]
+    df = serie.copy().sort_values("Fecha").reset_index(drop=True)
+    df["Z_Score"] = (df["Valor"]-df["Media_Objetivo"])/df["SD_Objetivo"]
     df["Regla_Violada"]="—"; df["Score_Riesgo"]=0; df["Estado"]="Verde"
     for i in range(len(df)):
-        z=df.at[i,"Z_Score"]
-        if abs(z)>=3.0: df.at[i,"Regla_Violada"]="1_3s"; df.at[i,"Score_Riesgo"]=90; df.at[i,"Estado"]="Rojo"; continue
+        z = df.at[i,"Z_Score"]
+        if abs(z)>=3.0:
+            df.at[i,"Regla_Violada"]="1_3s"; df.at[i,"Score_Riesgo"]=90; df.at[i,"Estado"]="Rojo"; continue
         if i>=1:
             zp=df.at[i-1,"Z_Score"]
             if abs(z)>=2.0 and abs(zp)>=2.0 and np.sign(z)==np.sign(zp):
@@ -653,7 +664,8 @@ def evaluar_westgard(serie):
             w10=df.loc[i-9:i,"Z_Score"].values; signos=set(np.sign(w10))
             if len(signos)==1 and 0.0 not in signos:
                 df.at[i,"Regla_Violada"]="10_x"; df.at[i,"Score_Riesgo"]=55; df.at[i,"Estado"]="Ámbar"; continue
-        if abs(z)>=2.0: df.at[i,"Regla_Violada"]="1_2s (warn)"; df.at[i,"Score_Riesgo"]=45; df.at[i,"Estado"]="Ámbar"; continue
+        if abs(z)>=2.0:
+            df.at[i,"Regla_Violada"]="1_2s (warn)"; df.at[i,"Score_Riesgo"]=45; df.at[i,"Estado"]="Ámbar"; continue
         df.at[i,"Score_Riesgo"]=max(0,int(abs(z)*18))
     return df
 
@@ -666,7 +678,7 @@ def estado_badge(e):
 # ==============================================================
 #  7. SIGMA METRICS
 # ==============================================================
-TEA_CLIA={
+TEA_CLIA = {
     "Potasio (K+)":(8.0,"mmol/L","CLIA"),"ALT (Transaminasa)":(20.0,"U/L","CLIA"),
     "Glucosa":(10.0,"mg/dL","CLIA"),"Sodio":(4.0,"mmol/L","CLIA"),
     "Creatinina":(15.0,"mg/dL","CLIA"),"Colesterol":(10.0,"mg/dL","CLIA"),
@@ -675,11 +687,12 @@ TEA_CLIA={
     "TSH":(25.0,"mIU/L","CLIA"),"T4 Libre (FT4)":(20.0,"ng/dL","CLIA"),
     "AST":(20.0,"U/L","CLIA"),"GGT":(20.0,"U/L","CLIA"),"LDH":(20.0,"U/L","CLIA"),
 }
-TEA_DEFAULT=15.0
+TEA_DEFAULT = 15.0
 
-def calcular_sigma(df_analito,tea_pct):
+def calcular_sigma(df_analito, tea_pct):
     if df_analito.empty: return {}
-    media=df_analito["Media_Objetivo"].iloc[0]; sd=df_analito["SD_Objetivo"].iloc[0]; vals=df_analito["Valor"]
+    media=df_analito["Media_Objetivo"].iloc[0]; sd=df_analito["SD_Objetivo"].iloc[0]
+    vals=df_analito["Valor"]
     cv_pct=(sd/media)*100 if media!=0 else 0
     sesgo_pct=abs((vals.mean()-media)/media)*100 if media!=0 else 0
     sigma=(tea_pct-sesgo_pct)/cv_pct if cv_pct>0 else 0
@@ -688,13 +701,14 @@ def calcular_sigma(df_analito,tea_pct):
     elif sigma>=3: cat="Aceptable";     color="#F59E0B"
     else:          cat="Revisar metodo";color="#E53E3E"
     return {"sigma":round(sigma,2),"cv_pct":round(cv_pct,2),"sesgo_pct":round(sesgo_pct,2),
-            "tea_pct":tea_pct,"categoria":cat,"color":color,"media":round(media,3),"sd":round(sd,4),"n":len(vals)}
+            "tea_pct":tea_pct,"categoria":cat,"color":color,
+            "media":round(media,3),"sd":round(sd,4),"n":len(vals)}
 
 
 # ==============================================================
 #  8. LEVEY-JENNINGS
 # ==============================================================
-def build_lj_figure(df_series,analito,nivel):
+def build_lj_figure(df_series, analito, nivel):
     u=df_series.iloc[-1]; m=u["Media_Objetivo"]; sd=u["SD_Objetivo"]
     nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
     fig=go.Figure()
@@ -703,15 +717,17 @@ def build_lj_figure(df_series,analito,nivel):
                        (m-sd,m+sd,"rgba(13,158,110,.06)")]:
         fig.add_hrect(y0=y0,y1=y1,fillcolor=col,line_width=0)
     for y_v,color,width,dash,name in [
-        (m,"#0D9E6E",2.0,"solid","Media"),(m+sd,"#94A3B8",1.0,"dash","+1 SD"),(m-sd,"#94A3B8",1.0,"dash","-1 SD"),
-        (m+2*sd,"#F59E0B",1.4,"dash","+2 SD"),(m-2*sd,"#F59E0B",1.4,"dash","-2 SD"),
-        (m+3*sd,"#E53E3E",1.8,"dot","+3 SD"),(m-3*sd,"#E53E3E",1.8,"dot","-3 SD"),
+        (m,"#0D9E6E",2.0,"solid","Media"),(m+sd,"#94A3B8",1.0,"dash","+1 SD"),
+        (m-sd,"#94A3B8",1.0,"dash","-1 SD"),(m+2*sd,"#F59E0B",1.4,"dash","+2 SD"),
+        (m-2*sd,"#F59E0B",1.4,"dash","-2 SD"),(m+3*sd,"#E53E3E",1.8,"dot","+3 SD"),
+        (m-3*sd,"#E53E3E",1.8,"dot","-3 SD"),
     ]:
         fig.add_hline(y=y_v,line_color=color,line_width=width,line_dash=dash,
                       annotation_text=name,annotation_position="right",
                       annotation_font=dict(color=color,size=10,family="Inter"))
     fig.add_trace(go.Scatter(x=df_series["Fecha"],y=df_series["Valor"],
-                             mode="lines",line=dict(color="#CBD5E1",width=1.5),showlegend=False,hoverinfo="skip"))
+                             mode="lines",line=dict(color="#CBD5E1",width=1.5),
+                             showlegend=False,hoverinfo="skip"))
     for estado,color in [("Verde","#0D9E6E"),("Ámbar","#F59E0B"),("Rojo","#E53E3E")]:
         sub=df_series[df_series["Estado"]==estado]
         if sub.empty: continue
@@ -719,7 +735,8 @@ def build_lj_figure(df_series,analito,nivel):
                                  marker=dict(size=9,color=color,line=dict(color="#FFFFFF",width=1.5))))
     fig.update_layout(
         template="plotly_white",
-        title=dict(text=f"Levey-Jennings — {analito} · {nivel_label}",font=dict(size=13,color="#1C2B3A",family="Inter")),
+        title=dict(text=f"Levey-Jennings — {analito} · {nivel_label}",
+                   font=dict(size=13,color="#1C2B3A",family="Inter")),
         paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
         legend=dict(orientation="h",y=1.08,x=1,xanchor="right"),
         xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",tickformat="%d %b",title="Fecha"),
@@ -750,14 +767,13 @@ def pdf_txt(s: str) -> str:
     for orig,repl in reemplazos.items(): s=s.replace(orig,repl)
     return s.encode("latin-1",errors="replace").decode("latin-1")
 
-def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - LAB. CENTRAL"):
+def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LAB. CENTRAL"):
 
     class PDF(FPDF):
         def footer(self):
-            self.set_y(-13)
-            self.set_font("Helvetica","I",8)
+            self.set_y(-13); self.set_font("Helvetica","I",8)
             self.set_text_color(100,116,139)
-            self.cell(0,10,f"Pagina {self.page_no()}/{{nb}}  |  AIQC v4.9  |  Uso interno del laboratorio",align="C")
+            self.cell(0,10,f"Pagina {self.page_no()}/{{nb}}  |  AIQC v4.9  |  Uso interno",align="C")
 
     pdf=PDF(); pdf.alias_nb_pages(); pdf.set_auto_page_break(auto=True,margin=20)
     pdf.add_page()
@@ -772,10 +788,7 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
     periodo=""
     if f_min and f_max:
         periodo=f"  |  Periodo: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}"
-    pdf.cell(0,6,
-             pdf_txt(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
-                     f"{periodo}  |  Analitos: {', '.join(analitos)}"),
-             ln=True,align="C")
+    pdf.cell(0,6,pdf_txt(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}{periodo}  |  Analitos: {', '.join(analitos)}"),ln=True,align="C")
     pdf.ln(12)
 
     niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
@@ -785,7 +798,7 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
         pdf.cell(0,8,pdf_txt(txt),ln=True)
         pdf.set_draw_color(13,158,110); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(3)
 
-    # ── Sección 1: Resumen ejecutivo ──────────────────────────
+    # Sección 1: Resumen ejecutivo
     sec("1. Resumen Ejecutivo por Nivel de Control")
     for niv in niveles_disponibles:
         frames=[evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy()) for an in analitos]
@@ -796,14 +809,11 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
         pdf.set_font("Helvetica","B",10); pdf.set_text_color(28,43,58)
         pdf.cell(0,7,pdf_txt(f"Nivel: {NIVELES.get(niv,NIVELES['N'])['label']}"),ln=True)
         pdf.set_font("Helvetica","",9)
-        pdf.cell(0,6,pdf_txt(f"  Total: {total}  |  Verde: {ok} ({100*ok//total if total else 0}%)"
-                             f"  |  Ambar: {ambar}  |  Rojo: {rojos}"),ln=True)
+        pdf.cell(0,6,pdf_txt(f"  Total: {total}  |  Verde: {ok} ({100*ok//total if total else 0}%)  |  Ambar: {ambar}  |  Rojo: {rojos}"),ln=True)
         pdf.ln(2)
 
-    # ── Sección 1b: Semáforo visual ───────────────────────────
+    # Sección 1b: Semáforo
     sec("1b. Semaforo de Estado por Analito y Nivel")
-    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
-    pdf.cell(0,5,"Estado del ultimo punto de control por analito y nivel:",ln=True); pdf.ln(2)
     sw=[52,30,22,22,22,22,18]; sh=["Analito","Nivel","Ultimo Valor","Media","SD","Z-Score","Estado"]
     pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
     for w,h in zip(sw,sh): pdf.cell(w,8,h,border=1,fill=True)
@@ -825,7 +835,7 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
             pdf.ln()
     pdf.ln(6)
 
-    # ── Sección 2: Sigma Metrics ──────────────────────────────
+    # Sección 2: Sigma Metrics
     sec("2. Sigma Metrics por Analito y Nivel (CLIA)")
     pdf.set_font("Helvetica","",8); pdf.set_text_color(80,80,80)
     pdf.cell(0,5,"Sigma = (TEa% - Sesgo%) / CV%  |  >=6: Clase Mundial  |  >=4: Buena  |  >=3: Aceptable  |  <3: Revisar",ln=True); pdf.ln(2)
@@ -852,11 +862,8 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
             pdf.ln()
     pdf.ln(6)
 
-    # ── Sección 3: Estado por analito y nivel ─────────────────
+    # Sección 3: Estado por analito
     sec("3. Estado por Analito y Nivel  [Z = (x - media) / SD]")
-    pdf.set_font("Helvetica","",8); pdf.set_text_color(80,80,80)
-    pdf.cell(0,5,pdf_txt("1_3s: +/-3SD -> Rojo | 2_2s: 2 consec +/-2SD -> Rojo | "
-                         "4_1s: 4 consec +/-1SD -> Ambar | 10_x: 10 consec mismo lado -> Ambar"),ln=True); pdf.ln(2)
     col_w=[40,26,20,22,22,26,22,20]; hdrs=["Analito","Nivel","Valor","Z-Score","Score","Regla","Estado","N pts"]
     pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
     for w,h in zip(col_w,hdrs): pdf.cell(w,8,h,border=1,fill=True)
@@ -877,7 +884,7 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
             pdf.ln()
     pdf.ln(5)
 
-    # ── Sección 4: Gráficos LJ ────────────────────────────────
+    # Sección 4: Gráficos LJ
     sec("4. Graficos Levey-Jennings por Analito y Nivel")
     for an in analitos:
         for niv in niveles_disponibles:
@@ -893,10 +900,9 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
                 pdf.image(tmp,x=10,w=190); pdf.ln(4)
             else:
                 pdf.set_font("Helvetica","I",9); pdf.set_text_color(100,116,139)
-                pdf.cell(0,7,pdf_txt(f"[Grafico no disponible para {an} / {niv_label} - instala kaleido]"),ln=True)
-    pdf.ln(3)
+                pdf.cell(0,7,pdf_txt(f"[Grafico no disponible - instala kaleido]"),ln=True)
 
-    # ── Sección 5: Guía Bio-Rad ───────────────────────────────
+    # Sección 5: Guía Bio-Rad
     sec("5. Guia Bio-Rad de Acciones Correctivas")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
     alarmas=set()
@@ -910,8 +916,7 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
                 if not kb: continue
                 niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
                 pdf.set_font("Helvetica","B",10)
-                if u["Estado"]=="Rojo": pdf.set_text_color(153,27,27)
-                else:                   pdf.set_text_color(146,64,14)
+                pdf.set_text_color(153,27,27) if u["Estado"]=="Rojo" else pdf.set_text_color(146,64,14)
                 estado_txt="ROJO" if u["Estado"]=="Rojo" else "AMBAR"
                 pdf.cell(0,7,pdf_txt(f"{estado_txt} - {an} [{niv_label}] - Regla {u['Regla_Violada']}"),ln=True)
                 pdf.set_font("Helvetica","",8); pdf.set_text_color(28,43,58)
@@ -927,16 +932,15 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
                 pdf.cell(0,5,pdf_txt(f"Ref: {kb['referencia']}"),ln=True); pdf.ln(3)
     if not alarmas:
         pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70)
-        pdf.cell(0,7,"Sin alarmas activas - no se requieren acciones correctivas.",ln=True)
+        pdf.cell(0,7,"Sin alarmas activas.",ln=True)
 
-    # ── Sección 6: Firma y validación ─────────────────────────
+    # Sección 6: Firma
     pdf.add_page()
     sec("6. Registro de Validacion y Firma")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
-    pdf.cell(0,6,"Este informe ha sido generado automaticamente por AIQC v4.9 y debe ser",ln=True)
-    pdf.cell(0,6,"revisado y validado por el responsable de calidad antes de su archivo.",ln=True)
+    pdf.cell(0,6,"Este informe ha sido generado automaticamente por AIQC v4.9 y debe ser revisado",ln=True)
+    pdf.cell(0,6,"y validado por el responsable de calidad antes de su archivo.",ln=True)
     pdf.ln(8)
-
     fw=[65,65,60]; fh=["Elaborado por","Revisado por","Responsable de Calidad"]
     pdf.set_font("Helvetica","B",9); pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105)
     for w,h in zip(fw,fh): pdf.cell(w,8,h,border=1,fill=True)
@@ -947,13 +951,11 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
     pdf.set_font("Helvetica","",8); pdf.set_text_color(100,116,139)
     for w in fw: pdf.cell(w,6,"Nombre y firma",border="LRB",align="C")
     pdf.ln(10)
-
     pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
     pdf.cell(65,8,pdf_txt(f"Fecha de emision: {datetime.now().strftime('%d/%m/%Y')}"),border=1)
     if f_min and f_max:
-        pdf.cell(125,8,pdf_txt(f"Periodo analizado: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}"),border=1)
+        pdf.cell(125,8,pdf_txt(f"Periodo: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}"),border=1)
     pdf.ln(10)
-
     pdf.set_font("Helvetica","I",8); pdf.set_text_color(100,116,139)
     pdf.multi_cell(0,5,pdf_txt(
         "Declaracion: Los datos contenidos en este informe son confidenciales y de uso interno. "
@@ -968,9 +970,9 @@ def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="CHUC - 
 # ==============================================================
 #  10. ASISTENTE IA GEMINI
 # ==============================================================
-MAX_TURNS=10
+MAX_TURNS = 10
 
-def ia_responde_gemini(pregunta,historial,df_all,analitos_ls,f_min,f_max):
+def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
     api_key=get_api_key()
     if not api_key: return "❌ **API Key de Gemini no configurada.**"
     genai.configure(api_key=api_key)
@@ -1015,9 +1017,9 @@ def ia_responde_gemini(pregunta,historial,df_all,analitos_ls,f_min,f_max):
 #  11. SIDEBAR
 # ==============================================================
 with st.sidebar:
-    st.markdown('<div class="sb-logo">🔬</div>',unsafe_allow_html=True)
-    st.markdown('<div class="sb-title">AIQC</div>',unsafe_allow_html=True)
-    st.markdown('<div class="sb-sub">Quality Control · v4.9 · Bio-Rad KB</div>',unsafe_allow_html=True)
+    st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sub">Quality Control · v4.9 · Bio-Rad KB</div>', unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("**📂 Fuente de datos**")
     uploaded=st.file_uploader("CSV o Excel",type=["csv","xlsx","xls"],
@@ -1026,7 +1028,9 @@ with st.sidebar:
         df_cargado,err=leer_archivo(uploaded)
         if df_cargado is not None:
             df_all=df_cargado; data_src=f"📄 {uploaded.name}"
-            st.markdown(f'<div class="data-pill">✅ <b>{uploaded.name}</b><br>{len(df_all)} filas · {df_all["Analito"].nunique()} analito(s)</div>',unsafe_allow_html=True)
+            st.markdown(f'<div class="data-pill">✅ <b>{uploaded.name}</b><br>'
+                        f'{len(df_all)} filas · {df_all["Analito"].nunique()} analito(s)</div>',
+                        unsafe_allow_html=True)
         else:
             st.error(err); df_all=build_demo(datetime.today().strftime("%Y-%m-%d")); data_src="Demo (error)"
     else:
@@ -1044,9 +1048,11 @@ with st.sidebar:
     fechas_d=sorted(df_all["Fecha"].dropna().unique())
     if len(fechas_d)>=2:
         f_min=st.date_input("Desde",value=pd.Timestamp(fechas_d[0]).date(),
-                            min_value=pd.Timestamp(fechas_d[0]).date(),max_value=pd.Timestamp(fechas_d[-1]).date(),key="f1")
+                            min_value=pd.Timestamp(fechas_d[0]).date(),
+                            max_value=pd.Timestamp(fechas_d[-1]).date(),key="f1")
         f_max=st.date_input("Hasta",value=pd.Timestamp(fechas_d[-1]).date(),
-                            min_value=pd.Timestamp(fechas_d[0]).date(),max_value=pd.Timestamp(fechas_d[-1]).date(),key="f2")
+                            min_value=pd.Timestamp(fechas_d[0]).date(),
+                            max_value=pd.Timestamp(fechas_d[-1]).date(),key="f2")
     else:
         f_min=f_max=pd.Timestamp(fechas_d[0]).date() if fechas_d else datetime.today().date()
 
@@ -1094,7 +1100,7 @@ st.markdown(f"""
     <div style="font-size:1.1rem">{estado_badge(estado_actual)}</div>
   </div>
 </div>
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 
 # ==============================================================
@@ -1171,7 +1177,8 @@ with tab_sigma:
         for i,an in enumerate(analitos_ls):
             with cols_tea[i%len(cols_tea)]:
                 tea_editado[an]=st.number_input(f"TEa% — {an.split('(')[0].strip()}",
-                    min_value=1.0,max_value=50.0,value=float(TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]),step=0.5,key=f"tea_{an}")
+                    min_value=1.0,max_value=50.0,
+                    value=float(TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]),step=0.5,key=f"tea_{an}")
     st.markdown("<br>",unsafe_allow_html=True)
     niveles_globales=sorted(df_all["Nivel"].unique())
     sigma_data=[]
@@ -1182,6 +1189,7 @@ with tab_sigma:
             if sub.empty: continue
             sig=calcular_sigma(sub,tea_editado.get(an,TEA_DEFAULT))
             if sig: sigma_data.append({"analito":an,"nivel":niv,"nivel_label":NIVELES.get(niv,NIVELES["N"])["label"],**sig})
+
     if not sigma_data:
         st.warning("Sin datos suficientes.")
     else:
@@ -1227,8 +1235,8 @@ with tab_sigma:
         st.markdown('<div class="sec-head">Detalle de cálculo</div>',unsafe_allow_html=True)
         st.write(pd.DataFrame([{"Analito":d["analito"],"Nivel":d["nivel_label"],"N":d["n"],
             "Media":d["media"],"SD":d["sd"],"CV%":f"{d['cv_pct']}%","Sesgo%":f"{d['sesgo_pct']}%",
-            "TEa%":f"{d['tea_pct']}%","Sigma":d["sigma"],"Categoría":d["categoria"]} for d in sigma_data
-        ]).to_html(escape=False,index=False),unsafe_allow_html=True)
+            "TEa%":f"{d['tea_pct']}%","Sigma":d["sigma"],"Categoría":d["categoria"]}
+            for d in sigma_data]).to_html(escape=False,index=False),unsafe_allow_html=True)
         st.markdown('<div class="sec-head">Interpretación clínica</div>',unsafe_allow_html=True)
         for d in sigma_data:
             s=d["sigma"]; lbl=f"**{d['analito']} [{d['nivel_label']}]** — **{s}σ**"
@@ -1242,7 +1250,8 @@ with tab_sigma:
 with tab_biorad:
     st.markdown("### 📋 Guía Bio-Rad de Acciones Correctivas")
     st.markdown("Base de conocimiento basada en los inserts de **Liquichek** y **Lyphochek**. "
-                "Consulta siempre el insert de tu lote en [myeInserts QCNet](https://myeinserts-app.qcnet.com/home).")
+                "Consulta siempre el insert de tu lote en "
+                "[myeInserts QCNet](https://myeinserts-app.qcnet.com/home).")
     col_sel1,col_sel2=st.columns([2,1])
     with col_sel1:
         an_kb=st.selectbox("Analito a consultar",options=list(BIORAD_KB.keys()),key="kb_analito_sel")
@@ -1293,7 +1302,7 @@ with tab_chat:
     for msg in st.session_state["messages"]:
         with st.chat_message(msg["role"],avatar="🤖" if msg["role"]=="assistant" else "👤"):
             st.markdown(msg["content"])
-    if prompt:=st.chat_input("Escribe tu consulta clínica…"):
+    if prompt := st.chat_input("Escribe tu consulta clínica…"):
         st.session_state["messages"].append({"role":"user","content":prompt})
         with st.chat_message("user",avatar="👤"): st.markdown(prompt)
         with st.chat_message("assistant",avatar="🤖"):
@@ -1312,7 +1321,7 @@ with tab_log:
         st.markdown("### 📝 Registro de Incidencias y Trazabilidad")
         st.caption("Acciones persistentes en SQLite · Desglose por nivel de control.")
 
-    lab_nombre="CHUC - LAB. CENTRAL"
+    lab_nombre = st.secrets.get("lab",{}).get("nombre","LAB. CENTRAL")
 
     with col_pdf:
         st.markdown("<br>",unsafe_allow_html=True)
@@ -1344,7 +1353,8 @@ with tab_log:
     else:
         acciones_db=load_acciones(db_con)
         hcols=st.columns([1.4,2.0,1.4,1.1,1.2,1.3,1.4,1.4,1.3])
-        for c,lbl in zip(hcols,["📅 Fecha","🔬 Analito","Nivel","Valor","Z-Score","Regla","Score","Estado","✅ Acción"]):
+        for c,lbl in zip(hcols,["📅 Fecha","🔬 Analito","Nivel","Valor",
+                                  "Z-Score","Regla","Score","Estado","✅ Acción"]):
             c.markdown(f"**{lbl}**")
         st.markdown("<hr style='border-color:#E2E8F0'>",unsafe_allow_html=True)
         for idx,row in df_log.iterrows():
@@ -1364,7 +1374,8 @@ with tab_log:
 
         st.markdown("<hr style='border-color:#E2E8F0'>",unsafe_allow_html=True)
         acciones_db=load_acciones(db_con)
-        claves_log=[f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label','N')}_{idx}" for idx,row in df_log.iterrows()]
+        claves_log=[f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label','N')}_{idx}"
+                    for idx,row in df_log.iterrows()]
         total=len(df_log); hechas=sum(acciones_db.get(k,False) for k in claves_log); pend=total-hechas
         m1,m2,m3,m4=st.columns(4)
         m1.metric("Total violaciones",total); m2.metric("Acciones tomadas ✅",hechas)
@@ -1381,5 +1392,5 @@ with tab_log:
                             f'<div class="kpi-lbl">{niv_cfg["icon"]} {niv_cfg["label"]}</div>'
                             f'<div class="kpi-sub">{n_rojos} rojos</div></div>',unsafe_allow_html=True)
 
-        if hechas==total: st.success("🎉 Trazabilidad completa. Todas las alertas gestionadas.")
-        elif pend: st.warning(f"⚠️ {pend} violación(es) pendiente(s) de acción.")
+        if hechas==total: st.success("🎉 Trazabilidad completa.")
+        elif pend: st.warning(f"⚠️ {pend} violación(es) pendiente(s).")
