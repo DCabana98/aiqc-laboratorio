@@ -1591,6 +1591,10 @@ with tab_log:
     with col_ttl:
         st.markdown("### 📝 Registro de Incidencias y Trazabilidad")
         st.caption("Acciones persistentes en SQLite · Desglose por nivel de control.")
+    # Nombre del laboratorio desde secrets (opcional)
+    try:    lab_nombre = st.secrets.get("lab",{}).get("nombre","Laboratorio Clinico")
+    except: lab_nombre = "Laboratorio Clinico"
+
     with col_pdf:
         st.markdown("<br>",unsafe_allow_html=True)
         if st.button("📄 Descargar PDF",use_container_width=True,type="primary"):
@@ -1602,10 +1606,6 @@ with tab_log:
                                        mime="application/pdf",use_container_width=True)
                     st.success("✅ Informe generado.")
                 except Exception as e: st.error(f"Error: {e}")
-
-    # Nombre del laboratorio desde secrets (opcional)
-    try:    lab_nombre = st.secrets.get("lab",{}).get("nombre","Laboratorio Clinico")
-    except: lab_nombre = "Laboratorio Clinico"
 
     niveles_globales_log=sorted(df_all["Nivel"].unique())
     all_log_frames=[]
