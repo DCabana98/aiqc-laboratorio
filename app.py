@@ -409,32 +409,144 @@ def nivel_badge(codigo):
 
 
 # ==============================================================
+#  BASE DE CONOCIMIENTO — ANALIZADOR COBAS 8000 (Roche)
+#  Fuente: Manual del operador v4.0.1 + búsqueda complementaria
+# ==============================================================
+COBAS_8000_KB = """
+=== ANALIZADOR MODULAR COBAS® 8000 — BASE DE CONOCIMIENTO ===
+
+## DESCRIPCIÓN GENERAL
+- Sistema totalmente automatizado de acceso aleatorio para inmunoensayos y análisis fotométricos (IVD).
+- Módulos: cobas ISE (electrólitos por ISE), cobas c 701/c 702/c 502 (fotométrico), cobas e 602 (inmunoensayo ECL).
+- Funciona 24 h/día. Temperatura ambiente de operación: 18–32 °C. Humedad: 30–85 %.
+- El cobas 8000 data manager coordina datos en tiempo real con el LIS del laboratorio.
+- Intervalo de calibración ISE: 24 horas para todos los tests ISE.
+
+## MÓDULOS Y SUS ANALITOS PRINCIPALES
+- cobas ISE: Sodio (Na+), Potasio (K+), Cloruro (Cl-), Calcio ionizado. Tecnología ISE (electrodo selectivo de iones).
+- cobas c 701/c 702/c 502: Análisis fotométrico. Glucosa, ALT, AST, GGT, LDH, Creatinina, Colesterol, Triglicéridos, HDL, Calcio, etc.
+- cobas e 602: Inmunoensayos por electroquimioluminiscencia (ECL). TSH, T4 Libre, etc.
+
+## MANTENIMIENTO DIARIO — OBLIGATORIO ANTES DE PROCESAR MUESTRAS
+1. Encender el equipo y verificar visualmente que no hay fugas durante la inicialización.
+2. Procesar la BANDEJA VERDE (green wash rack) de lavado:
+   - Tarda ~20 minutos.
+   - Tras procesar la bandeja verde, es OBLIGATORIA una calibración completa del módulo ISE.
+   - Recomendación Roche: procesar la bandeja verde INMEDIATAMENTE ANTES de la calibración diaria.
+   - Si se interrumpe el lavado: ejecutar (7) Lavar piezas de reacción → (4) Medición cell blank → (8) Cebar reactivos.
+   - Durante el lavado, enmascarar los tests ISE; solo se procesan tests fotométricos e inmunológicos.
+3. Limpiar la pipeta de muestra (exterior):
+   - Poner el equipo en Standby o enmascarar el módulo.
+   - Abrir cubierta superior. En módulos c 701/c 702: abrir además cubierta trasera y retirar cubierta de plexiglás.
+   - Cubrir aberturas de recipientes de dilución ISE con papel absorbente (evitar derrame de alcohol).
+   - Limpiar la pipeta con gasa sin pelusa humedecida en alcohol, de arriba a abajo.
+   - NO tocar superficies del equipo con la gasa impregnada en alcohol (daña el acabado).
+   - Retirar el papel, cerrar cubiertas, desenmascarar el módulo.
+4. Limpiar salidas de puertos de vaciado ISE:
+   - Al finalizar el análisis diario, limpiar las salidas de los puertos con gasa y agua desionizada.
+   - Evita acumulación de cristales blancos que reducen el aislamiento de electrodos y causan resultados incorrectos.
+5. Realizar calibración y QC ANTES de procesar muestras de pacientes:
+   - Cargar calibradores según lista de carga de reactivos.
+   - Cargar racks de QC inmediatamente después de los racks de calibradores.
+   - Verificar resultados de calibración y QC antes de liberar resultados de pacientes.
+   - NO cargar muestras con peticiones ISE hasta verificar calibración y QC del módulo ISE.
+6. Actualizar parámetros (e-barcodes) si el menú del data manager está en rojo o amarillo:
+   - Amarillo: parámetros actualizados disponibles.
+   - Rojo: parámetros críticos requeridos — NO procesar hasta resolver.
+
+## MODO LIMPIEZA MANUAL (Utilidades > Mantenimiento > (11) Limpieza Manual)
+- Los motores se desconectan; permite desplazar pipetas manualmente para limpiarlas.
+- EXCLUIR siempre el módulo ISE y todos los módulos c 502 de la selección (tienen cubierta Interlock).
+- NO seleccionar el módulo ISE y el primer módulo analítico simultáneamente.
+- Para finalizar: Panorámica → botón del módulo → Cancelar Mantenimiento → OK → (1) Reinicializar.
+- En módulos c 701/c 702: tras reinicializar, registrar reactivos desde Reactivos > Asignación > Registro Reactivo.
+- Si se usa Stop (botón global): SOLO si todos los demás módulos están en Standby; requiere reinicialización completa.
+
+## SISTEMA INTERLOCK
+- Detecta apertura de cubiertas supervisadas y detiene el equipo inmediatamente.
+- Cubiertas Interlock: cubierta de plexiglás del pipeteador (c 701/c 702) y cubierta superior (c 702 y c 502).
+- Todas las muestras pipeteadas al activarse el Interlock son INVÁLIDAS y deben volver a cargarse.
+- Abrir cubiertas Interlock SOLO en Standby o cuando el manual lo indique explícitamente.
+
+## SEGURIDAD OPERACIONAL — ADVERTENCIAS PRINCIPALES
+- Riesgo de infección: muestras, materiales asociados, solución de residuos, objetos afilados.
+- Riesgo eléctrico: no abrir módulos con el equipo en funcionamiento.
+- Resultados incorrectos por: reactivos caducados, mezcla de reactivo nuevo/viejo, cubeta de muestra incorrecta,
+  evaporación de muestras/reactivos, carryover, modo sin código de barras mal gestionado.
+- NO rellenar reactivos: sustituir siempre el contenedor vacío por uno nuevo.
+- NO usar reactivos, diluyentes o detergentes caducados.
+- Lesión por cubierta superior: sujetar siempre el asa; si no permanece abierta, contactar con soporte Roche.
+- Copias de seguridad de datos a intervalos regulares (Archivado de datos, p. 524).
+
+## MÓDULO ISE — PUNTOS CRÍTICOS PARA QC
+- Temperatura de incubación del agua ISE: 37 °C (suministrada por el primer módulo c 701/c 702 adyacente).
+- Cristales blancos en puertos de vaciado → reducen aislamiento de electrodos → resultados incorrectos.
+- Apertura de puertas frontales o contacto con componentes ISE durante medición → afecta nivel de ruido → pérdida de precisión.
+- Cubiertas del módulo ISE deben estar COLOCADAS para cualquier medición.
+- Abrir/cerrar cubiertas de unidades ISE solo con el módulo en Standby o apagado.
+- El módulo ISE puede enmascararse independientemente del primer módulo c 701/c 702 (salvo para ciertos mantenimientos).
+
+## MÓDULO FOTOMÉTRICO c 701/c 702 — PUNTOS CRÍTICOS PARA QC
+- Longitud de onda de referencia para NADH (ALT, AST, LDH): 340 nm — verificar periódicamente.
+- Temperatura del baño: 37,0 °C ± 0,1 °C — crítica para enzimas.
+- Cristalización en la unidad de lavado de cubeta de reacción 3 → impacta precisión óptica y puede desactivar cubetas.
+- Alarma de absorbancia: si la absorbancia supera 33.000 unidades → alarma de datos → verificar lipemia o valor extremo.
+- Alineación de pipeta: ajustar tras sustitución o si no está centrada sobre posiciones de pipeteo.
+
+## CALIBRACIÓN — RECOMENDACIONES
+- Calibrar TODOS los tests ISE cada 24 horas (obligatorio).
+- Calibración obligatoria tras procesar la bandeja verde de lavado.
+- Calibración obligatoria tras cambio de lote de reactivo (especialmente ISE y enzimas).
+- Revisar estado del calibrador: Workplace > Calib. Review.
+- Calibración fotométrica: trazabilidad a IDMS/NIST según el analito (creatinina: NIST SRM 967; colesterol: NIST SRM 1951c).
+
+## TROUBLESHOOTING RÁPIDO
+| Síntoma | Causa probable cobas 8000 | Acción |
+|---|---|---|
+| Error QC ISE (K+, Na+, Cl-) | Electrodo ISE desgastado / cristales en puerto vaciado / temperatura incorrecta | Limpiar puerto vaciado, revisar electrodo ISE, procesar bandeja verde + calibrar |
+| Error QC enzimas (ALT, AST, LDH) | Temperatura baño incorrecta / longitud de onda 340 nm desviada | Verificar temperatura baño (37,0 °C), verificar fotómetro |
+| Alarma Interlock | Cubierta abierta durante operación | Cerrar cubierta, reinicializar módulo |
+| Resultados dispersos entre muestras | Carryover / pipeta contaminada | Limpiar pipeta (limpieza manual), verificar programa de lavado |
+| Calibración ISE no válida | Bandeja verde no procesada / electrodo ISE / temperatura | Procesar bandeja verde → calibrar ISE |
+| Alarma absorbancia >33000 | Muestra lipémica / valor extremo / obstáculo en camino óptico | Verificar muestra, limpiar cubeta de reacción |
+"""
+
+# ==============================================================
 #  1. GOOGLE GEMINI — SYSTEM PROMPT v4.11
 # ==============================================================
 GEMINI_MODELS = ["models/gemini-2.5-flash","models/gemini-2.0-flash","models/gemini-2.0-flash-lite"]
 
 GEMINI_SYSTEM = (
     "Eres AIQC, el asistente inteligente de un laboratorio clínico especializado en "
-    "Control de Calidad (QC). Usas controles Bio-Rad (Liquichek y Lyphochek). "
+    "Control de Calidad (QC). Usas controles Bio-Rad (Liquichek y Lyphochek) y el "
+    "analizador Roche cobas® 8000 (módulos ISE, c 701/c 702, c 502, e 602). "
 
-    # --- Comportamiento técnico ---
+    # --- Comportamiento técnico QC ---
     "Cuando el usuario hace una pregunta técnica sobre QC, DEBES incluir los valores "
     "numéricos reales del laboratorio en tu respuesta. "
-    "Cuando hay alarma, menciona causas y acciones según el insert Bio-Rad. "
+    "Cuando hay alarma, menciona causas y acciones según el insert Bio-Rad Y, si aplica, "
+    "según el manual del cobas 8000 (módulo, mantenimiento, calibración, ISE, fotométrico). "
     "La regla R-4s indica ERROR ALEATORIO entre niveles — NO recalibrar como primer paso. "
     "NUNCA inventes datos, resultados ni análisis. Usa SOLO los datos que se te proporcionan "
     "en el bloque === DATOS REALES ===. Si no hay datos para un analito, dilo explícitamente. "
+
+    # --- Conocimiento del cobas 8000 ---
+    "Tienes acceso al manual del operador del cobas® 8000 v4.0.1 (Roche Diagnostics). "
+    "Cuando el usuario pregunte sobre mantenimiento, calibración, errores del analizador, "
+    "módulo ISE, módulos fotométricos, sistema Interlock, limpieza de pipetas, bandeja verde, "
+    "o cualquier aspecto operacional del cobas 8000, usa la información del manual "
+    "que se te proporciona en el bloque === COBAS 8000 MANUAL ===. "
 
     # --- Comportamiento conversacional y de propósito general ---
     "También puedes hablar de cualquier otro tema que el usuario plantee: ciencia, medicina, "
     "cultura general, preguntas personales, curiosidades, etc. En esos casos responde de forma "
     "natural, amigable y útil, sin forzar el tema hacia el laboratorio. "
-    "Si el usuario saluda o hace una pregunta que no es técnica de QC, responde ÚNICAMENTE "
-    "a lo que se te dice, de forma breve y natural, SIN analizar ni mencionar datos de "
-    "laboratorio, Z-Score, alarmas ni resultados a no ser que el usuario los pida. "
+    "Si el usuario saluda o hace una pregunta que no es técnica de QC ni del cobas 8000, "
+    "responde ÚNICAMENTE a lo que se te dice, de forma breve y natural, SIN analizar ni "
+    "mencionar datos de laboratorio, Z-Score, alarmas ni resultados a no ser que los pida. "
 
     # --- Formato ---
-    "Respondes siempre en español. Para temas técnicos de QC usa tono técnico y conciso con "
+    "Respondes siempre en español. Para temas técnicos usa tono técnico y conciso con "
     "Markdown. Para conversación general usa un tono cercano y natural. "
     "Z-Score (cuando sea relevante): Z = (x - media) / SD."
 )
