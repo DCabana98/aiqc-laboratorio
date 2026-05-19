@@ -1,15 +1,16 @@
 # ==============================================================
 #  AIQC – Artificial Intelligence for Quality Control
-#  Versión: 4.11 – EWMA/CUSUM + R-4s + CSV + Bio-Rad KB
+#  Versión: 4.12 – OpenLab sync + GitHub + cobas 8000 KB
 #  Deploy:  streamlit run app.py
-#  Deps:    pip install streamlit plotly pandas numpy fpdf2 openpyxl google-generativeai kaleido
+#  Deps:    pip install streamlit plotly pandas numpy fpdf2 openpyxl google-generativeai kaleido requests
 # ==============================================================
 
-import os, sqlite3
+import os, sqlite3, io
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import requests
 from datetime import datetime, timedelta
 from fpdf import FPDF
 import google.generativeai as genai
@@ -119,6 +120,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stAppViewBlockCont
 .biorad-card { background:#FFFFFF; border:1px solid #E2E8F0; border-left:4px solid #1A6FC4; border-radius:12px; padding:18px 20px; margin-bottom:12px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
 .biorad-card-red { background:#FFFAFA; border:1px solid #FECACA; border-left:4px solid #E53E3E; border-radius:12px; padding:18px 20px; margin-bottom:12px; box-shadow:0 2px 12px rgba(229,62,62,.08); }
 .biorad-card-amber { background:#FFFDF5; border:1px solid #FDE68A; border-left:4px solid #F59E0B; border-radius:12px; padding:18px 20px; margin-bottom:12px; box-shadow:0 2px 12px rgba(245,158,11,.08); }
+.sync-pill { background:rgba(13,158,110,.12); border:1px solid rgba(13,158,110,.30); border-radius:10px; padding:10px 14px; font-size:.82rem; color:#34D399 !important; margin-top:8px; }
 table { width:100%; border-collapse:collapse; font-size:.86rem; }
 thead tr { background:#F8FAFC; }
 th { padding:11px 13px; text-align:left; font-weight:700; color:#475569; border-bottom:2px solid #E2E8F0; text-transform:uppercase; font-size:.72rem; letter-spacing:.06em; }
@@ -409,110 +411,89 @@ def nivel_badge(codigo):
 
 
 # ==============================================================
-#  BASE DE CONOCIMIENTO — ANALIZADOR COBAS 8000 (Roche)
-#  Fuente: Manual del operador v4.0.1 + búsqueda complementaria
+#  BASE DE CONOCIMIENTO COBAS 8000
 # ==============================================================
 COBAS_8000_KB = """
 === ANALIZADOR MODULAR COBAS® 8000 — BASE DE CONOCIMIENTO ===
 
 ## DESCRIPCIÓN GENERAL
 - Sistema totalmente automatizado de acceso aleatorio para inmunoensayos y análisis fotométricos (IVD).
-- Módulos: cobas ISE (electrólitos por ISE), cobas c 701/c 702/c 502 (fotométrico), cobas e 602 (inmunoensayo ECL).
-- Funciona 24 h/día. Temperatura ambiente de operación: 18–32 °C. Humedad: 30–85 %.
-- El cobas 8000 data manager coordina datos en tiempo real con el LIS del laboratorio.
-- Intervalo de calibración ISE: 24 horas para todos los tests ISE.
+- Módulos: cobas ISE (electrólitos ISE), cobas c 701/c 702/c 502 (fotométrico), cobas e 602 (inmunoensayo ECL).
+- Funciona 24 h/día. Temperatura ambiente: 18–32 °C. Humedad: 30–85 %.
+- Intervalo de calibración ISE: 24 horas obligatorio para todos los tests ISE.
 
-## MÓDULOS Y SUS ANALITOS PRINCIPALES
-- cobas ISE: Sodio (Na+), Potasio (K+), Cloruro (Cl-), Calcio ionizado. Tecnología ISE (electrodo selectivo de iones).
-- cobas c 701/c 702/c 502: Análisis fotométrico. Glucosa, ALT, AST, GGT, LDH, Creatinina, Colesterol, Triglicéridos, HDL, Calcio, etc.
-- cobas e 602: Inmunoensayos por electroquimioluminiscencia (ECL). TSH, T4 Libre, etc.
+## MÓDULOS Y ANALITOS
+- cobas ISE: Na+, K+, Cl-, Ca++ ionizado. Tecnología electrodo selectivo de iones.
+- cobas c 701/c 702/c 502: Fotométrico. Glucosa, ALT, AST, GGT, LDH, Creatinina, Colesterol, Triglicéridos, HDL, Calcio.
+- cobas e 602: Inmunoensayos ECL. TSH, T4 Libre, etc.
 
-## MANTENIMIENTO DIARIO — OBLIGATORIO ANTES DE PROCESAR MUESTRAS
-1. Encender el equipo y verificar visualmente que no hay fugas durante la inicialización.
-2. Procesar la BANDEJA VERDE (green wash rack) de lavado:
-   - Tarda ~20 minutos.
-   - Tras procesar la bandeja verde, es OBLIGATORIA una calibración completa del módulo ISE.
-   - Recomendación Roche: procesar la bandeja verde INMEDIATAMENTE ANTES de la calibración diaria.
-   - Si se interrumpe el lavado: ejecutar (7) Lavar piezas de reacción → (4) Medición cell blank → (8) Cebar reactivos.
-   - Durante el lavado, enmascarar los tests ISE; solo se procesan tests fotométricos e inmunológicos.
-3. Limpiar la pipeta de muestra (exterior):
-   - Poner el equipo en Standby o enmascarar el módulo.
-   - Abrir cubierta superior. En módulos c 701/c 702: abrir además cubierta trasera y retirar cubierta de plexiglás.
-   - Cubrir aberturas de recipientes de dilución ISE con papel absorbente (evitar derrame de alcohol).
-   - Limpiar la pipeta con gasa sin pelusa humedecida en alcohol, de arriba a abajo.
-   - NO tocar superficies del equipo con la gasa impregnada en alcohol (daña el acabado).
-   - Retirar el papel, cerrar cubiertas, desenmascarar el módulo.
-4. Limpiar salidas de puertos de vaciado ISE:
-   - Al finalizar el análisis diario, limpiar las salidas de los puertos con gasa y agua desionizada.
-   - Evita acumulación de cristales blancos que reducen el aislamiento de electrodos y causan resultados incorrectos.
-5. Realizar calibración y QC ANTES de procesar muestras de pacientes:
-   - Cargar calibradores según lista de carga de reactivos.
-   - Cargar racks de QC inmediatamente después de los racks de calibradores.
-   - Verificar resultados de calibración y QC antes de liberar resultados de pacientes.
-   - NO cargar muestras con peticiones ISE hasta verificar calibración y QC del módulo ISE.
-6. Actualizar parámetros (e-barcodes) si el menú del data manager está en rojo o amarillo:
-   - Amarillo: parámetros actualizados disponibles.
-   - Rojo: parámetros críticos requeridos — NO procesar hasta resolver.
+## MANTENIMIENTO DIARIO — ANTES DE PROCESAR MUESTRAS
+1. Encender y verificar visualmente ausencia de fugas durante inicialización.
+2. Procesar la BANDEJA VERDE (green wash rack): ~20 min. Obligatoria calibración ISE completa tras el lavado.
+   Roche recomienda procesar la bandeja verde INMEDIATAMENTE ANTES de la calibración diaria.
+   Si se interrumpe: ejecutar (7) Lavar piezas reacción → (4) Cell blank → (8) Cebar reactivos.
+   Durante el lavado: enmascarar tests ISE; solo fotométricos e inmunológicos activos.
+3. Limpiar pipeta de muestra (exterior): Standby → abrir cubierta → cubrir recipientes dilución ISE con papel →
+   limpiar pipeta con gasa sin pelusa humedecida en alcohol de arriba a abajo →
+   NO tocar superficies del equipo con gasa alcoholada (daña el acabado) → cerrar → desenmascarar.
+4. Limpiar salidas puertos vaciado ISE: gasa + agua desionizada al finalizar el análisis diario.
+   Previene acumulación de cristales blancos que reducen aislamiento de electrodos.
+5. Calibración y QC ANTES de procesar muestras. NO cargar muestras ISE sin verificar calibración y QC ISE.
+6. Actualizar parámetros (e-barcodes): menú rojo = crítico (no procesar), amarillo = actualización disponible.
 
-## MODO LIMPIEZA MANUAL (Utilidades > Mantenimiento > (11) Limpieza Manual)
-- Los motores se desconectan; permite desplazar pipetas manualmente para limpiarlas.
-- EXCLUIR siempre el módulo ISE y todos los módulos c 502 de la selección (tienen cubierta Interlock).
-- NO seleccionar el módulo ISE y el primer módulo analítico simultáneamente.
-- Para finalizar: Panorámica → botón del módulo → Cancelar Mantenimiento → OK → (1) Reinicializar.
-- En módulos c 701/c 702: tras reinicializar, registrar reactivos desde Reactivos > Asignación > Registro Reactivo.
-- Si se usa Stop (botón global): SOLO si todos los demás módulos están en Standby; requiere reinicialización completa.
+## MODO LIMPIEZA MANUAL
+- Ruta: Utilidades > Mantenimiento > (11) Limpieza Manual.
+- EXCLUIR módulo ISE y todos los módulos c 502 de la selección (tienen cubierta Interlock propia).
+- NO seleccionar módulo ISE y primer módulo analítico simultáneamente.
+- Finalizar: Panorámica → botón módulo → Cancelar Mantenimiento → OK → (1) Reinicializar.
+- En c 701/c 702: tras reinicializar, registrar reactivos en Reactivos > Asignación > Registro Reactivo.
+- Stop global: SOLO si todos los demás módulos están en Standby; requiere reinicialización completa.
 
 ## SISTEMA INTERLOCK
 - Detecta apertura de cubiertas supervisadas y detiene el equipo inmediatamente.
-- Cubiertas Interlock: cubierta de plexiglás del pipeteador (c 701/c 702) y cubierta superior (c 702 y c 502).
-- Todas las muestras pipeteadas al activarse el Interlock son INVÁLIDAS y deben volver a cargarse.
-- Abrir cubiertas Interlock SOLO en Standby o cuando el manual lo indique explícitamente.
+- Muestras pipeteadas al activarse = INVÁLIDAS, deben recargarse.
+- Abrir cubiertas Interlock SOLO en Standby o cuando el manual lo indique.
 
-## SEGURIDAD OPERACIONAL — ADVERTENCIAS PRINCIPALES
-- Riesgo de infección: muestras, materiales asociados, solución de residuos, objetos afilados.
-- Riesgo eléctrico: no abrir módulos con el equipo en funcionamiento.
-- Resultados incorrectos por: reactivos caducados, mezcla de reactivo nuevo/viejo, cubeta de muestra incorrecta,
-  evaporación de muestras/reactivos, carryover, modo sin código de barras mal gestionado.
-- NO rellenar reactivos: sustituir siempre el contenedor vacío por uno nuevo.
-- NO usar reactivos, diluyentes o detergentes caducados.
-- Lesión por cubierta superior: sujetar siempre el asa; si no permanece abierta, contactar con soporte Roche.
-- Copias de seguridad de datos a intervalos regulares (Archivado de datos, p. 524).
+## PUNTOS CRÍTICOS QC — MÓDULO ISE
+- Temperatura agua de incubación ISE: 37 °C (suministrada por primer módulo c 701/c 702 adyacente).
+- Cristales blancos en puertos vaciado → reduce aislamiento electrodos → resultados incorrectos.
+- Cubiertas ISE deben estar COLOCADAS para cualquier medición.
+- Abrir/cerrar cubiertas ISE solo con módulo en Standby o apagado.
+- Contacto con componentes ISE o apertura de puertas frontales durante medición → afecta ruido → pérdida de precisión.
 
-## MÓDULO ISE — PUNTOS CRÍTICOS PARA QC
-- Temperatura de incubación del agua ISE: 37 °C (suministrada por el primer módulo c 701/c 702 adyacente).
-- Cristales blancos en puertos de vaciado → reducen aislamiento de electrodos → resultados incorrectos.
-- Apertura de puertas frontales o contacto con componentes ISE durante medición → afecta nivel de ruido → pérdida de precisión.
-- Cubiertas del módulo ISE deben estar COLOCADAS para cualquier medición.
-- Abrir/cerrar cubiertas de unidades ISE solo con el módulo en Standby o apagado.
-- El módulo ISE puede enmascararse independientemente del primer módulo c 701/c 702 (salvo para ciertos mantenimientos).
-
-## MÓDULO FOTOMÉTRICO c 701/c 702 — PUNTOS CRÍTICOS PARA QC
-- Longitud de onda de referencia para NADH (ALT, AST, LDH): 340 nm — verificar periódicamente.
-- Temperatura del baño: 37,0 °C ± 0,1 °C — crítica para enzimas.
-- Cristalización en la unidad de lavado de cubeta de reacción 3 → impacta precisión óptica y puede desactivar cubetas.
-- Alarma de absorbancia: si la absorbancia supera 33.000 unidades → alarma de datos → verificar lipemia o valor extremo.
+## PUNTOS CRÍTICOS QC — MÓDULOS FOTOMÉTRICOS c 701/c 702
+- Longitud de onda NADH (ALT, AST, LDH): 340 nm — verificar periódicamente.
+- Temperatura baño: 37,0 °C ± 0,1 °C — crítica para enzimas.
+- Cristalización en unidad de lavado cubeta 3 → impacta precisión óptica y puede desactivar cubetas.
+- Alarma absorbancia >33.000 unidades → verificar lipemia o valor extremo en muestra.
 - Alineación de pipeta: ajustar tras sustitución o si no está centrada sobre posiciones de pipeteo.
 
-## CALIBRACIÓN — RECOMENDACIONES
-- Calibrar TODOS los tests ISE cada 24 horas (obligatorio).
-- Calibración obligatoria tras procesar la bandeja verde de lavado.
-- Calibración obligatoria tras cambio de lote de reactivo (especialmente ISE y enzimas).
-- Revisar estado del calibrador: Workplace > Calib. Review.
-- Calibración fotométrica: trazabilidad a IDMS/NIST según el analito (creatinina: NIST SRM 967; colesterol: NIST SRM 1951c).
+## CALIBRACIÓN
+- Calibrar todos los tests ISE cada 24 horas (obligatorio).
+- Calibración obligatoria tras bandeja verde y tras cambio de lote de reactivo.
+- Revisar estado calibrador: Workplace > Calib. Review.
+- Trazabilidad: creatinina → NIST SRM 967; colesterol → NIST SRM 1951c.
+
+## SEGURIDAD
+- No usar reactivos, diluyentes o detergentes caducados.
+- No rellenar reactivos: sustituir siempre el contenedor vacío por uno nuevo.
+- Riesgo de infección: muestras, residuos sólidos, objetos afilados.
+- Copias de seguridad de datos a intervalos regulares.
 
 ## TROUBLESHOOTING RÁPIDO
-| Síntoma | Causa probable cobas 8000 | Acción |
+| Síntoma | Causa probable | Acción cobas 8000 |
 |---|---|---|
-| Error QC ISE (K+, Na+, Cl-) | Electrodo ISE desgastado / cristales en puerto vaciado / temperatura incorrecta | Limpiar puerto vaciado, revisar electrodo ISE, procesar bandeja verde + calibrar |
-| Error QC enzimas (ALT, AST, LDH) | Temperatura baño incorrecta / longitud de onda 340 nm desviada | Verificar temperatura baño (37,0 °C), verificar fotómetro |
+| Error QC ISE (K+, Na+, Cl-) | Electrodo desgastado / cristales en puerto / temperatura incorrecta | Limpiar puerto vaciado, revisar electrodo, bandeja verde + calibrar |
+| Error QC enzimas (ALT/AST/LDH) | Temperatura baño incorrecta / longitud de onda 340 nm desviada | Verificar temperatura 37,0 °C, verificar fotómetro |
 | Alarma Interlock | Cubierta abierta durante operación | Cerrar cubierta, reinicializar módulo |
-| Resultados dispersos entre muestras | Carryover / pipeta contaminada | Limpiar pipeta (limpieza manual), verificar programa de lavado |
-| Calibración ISE no válida | Bandeja verde no procesada / electrodo ISE / temperatura | Procesar bandeja verde → calibrar ISE |
-| Alarma absorbancia >33000 | Muestra lipémica / valor extremo / obstáculo en camino óptico | Verificar muestra, limpiar cubeta de reacción |
+| Resultados dispersos entre muestras | Carryover / pipeta contaminada | Limpiar pipeta (limpieza manual), revisar programa lavado |
+| Calibración ISE no válida | Bandeja verde no procesada / electrodo / temperatura | Procesar bandeja verde → calibrar ISE |
+| Alarma absorbancia >33000 | Muestra lipémica / valor extremo / obstáculo óptico | Verificar muestra, limpiar cubeta de reacción |
 """
 
+
 # ==============================================================
-#  1. GOOGLE GEMINI — SYSTEM PROMPT v4.11
+#  1. GOOGLE GEMINI — SYSTEM PROMPT v4.12
 # ==============================================================
 GEMINI_MODELS = ["models/gemini-2.5-flash","models/gemini-2.0-flash","models/gemini-2.0-flash-lite"]
 
@@ -520,35 +501,28 @@ GEMINI_SYSTEM = (
     "Eres AIQC, el asistente inteligente de un laboratorio clínico especializado en "
     "Control de Calidad (QC). Usas controles Bio-Rad (Liquichek y Lyphochek) y el "
     "analizador Roche cobas® 8000 (módulos ISE, c 701/c 702, c 502, e 602). "
+    "Los datos de QC se generan en OpenLab (Agilent) y se sincronizan automáticamente con la app. "
 
-    # --- Comportamiento técnico QC ---
     "Cuando el usuario hace una pregunta técnica sobre QC, DEBES incluir los valores "
     "numéricos reales del laboratorio en tu respuesta. "
     "Cuando hay alarma, menciona causas y acciones según el insert Bio-Rad Y, si aplica, "
     "según el manual del cobas 8000 (módulo, mantenimiento, calibración, ISE, fotométrico). "
     "La regla R-4s indica ERROR ALEATORIO entre niveles — NO recalibrar como primer paso. "
-    "NUNCA inventes datos, resultados ni análisis. Usa SOLO los datos que se te proporcionan "
-    "en el bloque === DATOS REALES ===. Si no hay datos para un analito, dilo explícitamente. "
+    "NUNCA inventes datos, resultados ni análisis. Usa SOLO los datos del bloque === DATOS REALES ===. "
+    "Si no hay datos para un analito, dilo explícitamente. "
 
-    # --- Conocimiento del cobas 8000 ---
     "Tienes acceso al manual del operador del cobas® 8000 v4.0.1 (Roche Diagnostics). "
     "Cuando el usuario pregunte sobre mantenimiento, calibración, errores del analizador, "
     "módulo ISE, módulos fotométricos, sistema Interlock, limpieza de pipetas, bandeja verde, "
-    "o cualquier aspecto operacional del cobas 8000, usa la información del manual "
-    "que se te proporciona en el bloque === COBAS 8000 MANUAL ===. "
+    "o cualquier aspecto operacional del cobas 8000, usa el bloque === COBAS 8000 MANUAL ===. "
 
-    # --- Comportamiento conversacional y de propósito general ---
     "También puedes hablar de cualquier otro tema que el usuario plantee: ciencia, medicina, "
-    "cultura general, preguntas personales, curiosidades, etc. En esos casos responde de forma "
-    "natural, amigable y útil, sin forzar el tema hacia el laboratorio. "
-    "Si el usuario saluda o hace una pregunta que no es técnica de QC ni del cobas 8000, "
-    "responde ÚNICAMENTE a lo que se te dice, de forma breve y natural, SIN analizar ni "
-    "mencionar datos de laboratorio, Z-Score, alarmas ni resultados a no ser que los pida. "
+    "cultura general, preguntas personales, curiosidades, etc. Responde de forma natural y útil. "
+    "Si el usuario saluda o hace una pregunta no técnica, responde ÚNICAMENTE a lo que se te dice, "
+    "de forma breve y natural, SIN mencionar datos de laboratorio a no ser que los pida. "
 
-    # --- Formato ---
-    "Respondes siempre en español. Para temas técnicos usa tono técnico y conciso con "
-    "Markdown. Para conversación general usa un tono cercano y natural. "
-    "Z-Score (cuando sea relevante): Z = (x - media) / SD."
+    "Respondes siempre en español. Temas técnicos: tono técnico y conciso con Markdown. "
+    "Conversación general: tono cercano y natural. Z-Score: Z = (x - media) / SD."
 )
 
 GEMINI_CFG = {"temperature":0.2,"max_output_tokens":2048,"top_p":0.85}
@@ -573,7 +547,7 @@ def render_login():
         <div style="font-size:3rem;text-align:center">🔬</div>
         <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#1A6FC4;margin-bottom:4px">AIQC</div>
         <div style="text-align:center;font-size:.86rem;color:#64748B;margin-bottom:28px">
-            Artificial Intelligence for Quality Control · v4.11</div></div>""", unsafe_allow_html=True)
+            Artificial Intelligence for Quality Control · v4.12</div></div>""", unsafe_allow_html=True)
     _, mid, _ = st.columns([1,1.8,1])
     with mid:
         st.markdown("<br>", unsafe_allow_html=True)
@@ -684,7 +658,70 @@ def leer_archivo(uploaded):
 
 
 # ==============================================================
-#  6. WESTGARD + R-4s
+#  6. GITHUB SYNC (OpenLab → GitHub → App)
+# ==============================================================
+def leer_csv_github() -> tuple:
+    """Descarga el CSV desde GitHub y devuelve (DataFrame | None, mensaje)."""
+    try:
+        cfg     = st.secrets.get("github", {})
+        usuario = cfg.get("usuario", "")
+        repo    = cfg.get("repo", "")
+        rama    = cfg.get("rama", "main")
+        archivo = cfg.get("archivo", "data/controles_qc.csv")
+        token   = cfg.get("token", "")
+
+        if not all([usuario, repo, archivo]):
+            return None, "⚠️ Faltan datos en secrets.toml — sección [github]: usuario, repo, archivo."
+
+        url     = f"https://api.github.com/repos/{usuario}/{repo}/contents/{archivo}?ref={rama}"
+        headers = {"Accept": "application/vnd.github.raw+json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        r = requests.get(url, headers=headers, timeout=20)
+
+        if r.status_code == 404:
+            return None, f"❌ Archivo no encontrado: `{archivo}`. ¿Ya ejecutaste sync_openlab.py?"
+        if r.status_code == 401:
+            return None, "❌ Token de GitHub inválido o sin permisos de lectura."
+        if r.status_code != 200:
+            return None, f"❌ Error GitHub {r.status_code}: {r.text[:200]}"
+
+        contenido = r.content
+        try:
+            df_raw = pd.read_csv(io.BytesIO(contenido), sep=";", encoding="utf-8-sig")
+        except Exception:
+            df_raw = pd.read_csv(io.BytesIO(contenido), sep=None, engine="python", encoding="utf-8-sig")
+
+        df, err = normalizar_df(df_raw)
+        if df is None:
+            return None, f"❌ CSV descargado pero con formato incorrecto: {err}"
+
+        ts = datetime.now().strftime("%d/%m/%Y %H:%M")
+        msg = f"✅ {len(df)} filas · {df['Analito'].nunique()} analito(s) · sync {ts}"
+        return df, msg
+
+    except requests.exceptions.ConnectionError:
+        return None, "❌ Sin conexión a internet. Verifica la red del laboratorio."
+    except Exception as e:
+        return None, f"❌ Error inesperado: {str(e)[:200]}"
+
+
+def _auto_refresh_github():
+    """Auto-refresco silencioso: recarga si han pasado más de INTERVALO minutos."""
+    INTERVALO_MIN = 60
+    ahora  = datetime.now()
+    ultima = st.session_state.get("github_last_sync")
+    if ultima is None or (ahora - ultima).total_seconds() > INTERVALO_MIN * 60:
+        df_gh, msg = leer_csv_github()
+        if df_gh is not None:
+            st.session_state["df_github"]        = df_gh
+            st.session_state["data_src_github"]  = msg
+            st.session_state["github_last_sync"] = ahora
+
+
+# ==============================================================
+#  7. WESTGARD + R-4s
 # ==============================================================
 REGLAS_DESC = (
     "1_3s: +/-3SD -> Rojo | 2_2s: 2 consec +/-2SD -> Rojo | "
@@ -733,7 +770,7 @@ def evaluar_r4s(df_all, analito, f_min, f_max):
     pares = list(zscores.items())
     for i in range(len(pares)):
         for j in range(i+1,len(pares)):
-            niv_a,info_a = pares[i]; niv_b,info_b = pares[j]
+            niv_a,info_a=pares[i]; niv_b,info_b=pares[j]
             diff = abs(info_a["z"]-info_b["z"])
             if diff>=4.0 and np.sign(info_a["z"])!=np.sign(info_b["z"]):
                 return {"dispara":True,"analito":analito,
@@ -777,130 +814,98 @@ def estado_badge(e):
 
 
 # ==============================================================
-#  7. EWMA / CUSUM
+#  8. EWMA / CUSUM
 # ==============================================================
-def calcular_ewma(z_scores: list, lam: float = 0.20) -> dict:
+def calcular_ewma(z_scores, lam=0.20):
     n = len(z_scores)
     if n == 0:
-        return {"ewma":[],"estados":[],"ultimo_ewma":0,"sigma_ewma":0,"inicio_deriva":None}
-    sigma_ewma = (lam / (2 - lam)) ** 0.5
-    lim_warn   = 2.0 * sigma_ewma
-    lim_act    = 3.0 * sigma_ewma
-    ewma    = [0.0] * n
-    estados = ["Verde"] * n
-    ewma[0] = lam * z_scores[0]
-    for i in range(1, n):
-        ewma[i] = lam * z_scores[i] + (1 - lam) * ewma[i-1]
-    inicio_deriva = None
-    for i, e in enumerate(ewma):
-        if abs(e) >= lim_act:
-            estados[i] = "Rojo"
-            if inicio_deriva is None: inicio_deriva = i
-        elif abs(e) >= lim_warn:
-            estados[i] = "Ámbar"
-            if inicio_deriva is None: inicio_deriva = i
-    return {
-        "ewma": ewma, "estados": estados,
-        "ultimo_ewma": round(ewma[-1], 4), "sigma_ewma": round(sigma_ewma, 4),
-        "lim_warn": round(lim_warn, 4), "lim_act": round(lim_act, 4),
-        "inicio_deriva": inicio_deriva,
-    }
+        return {"ewma":[],"estados":[],"ultimo_ewma":0,"sigma_ewma":0,"inicio_deriva":None,"lim_warn":0,"lim_act":0}
+    sigma_ewma = (lam/(2-lam))**0.5
+    lim_warn = 2.0*sigma_ewma; lim_act = 3.0*sigma_ewma
+    ewma=[0.0]*n; estados=["Verde"]*n
+    ewma[0]=lam*z_scores[0]
+    for i in range(1,n): ewma[i]=lam*z_scores[i]+(1-lam)*ewma[i-1]
+    inicio_deriva=None
+    for i,e in enumerate(ewma):
+        if abs(e)>=lim_act:
+            estados[i]="Rojo"
+            if inicio_deriva is None: inicio_deriva=i
+        elif abs(e)>=lim_warn:
+            estados[i]="Ámbar"
+            if inicio_deriva is None: inicio_deriva=i
+    return {"ewma":ewma,"estados":estados,"ultimo_ewma":round(ewma[-1],4),
+            "sigma_ewma":round(sigma_ewma,4),"lim_warn":round(lim_warn,4),
+            "lim_act":round(lim_act,4),"inicio_deriva":inicio_deriva}
 
-def calcular_cusum(z_scores: list, k: float = 0.5, h: float = 5.0) -> dict:
-    n = len(z_scores)
-    if n == 0:
-        return {"cusum_pos":[],"cusum_neg":[],"alarma_any":[],"primera_alarma":None,
-                "max_cp":0,"max_cm":0,"tipo_deriva":None}
-    cp = [0.0] * n; cm = [0.0] * n; alarma = [False] * n
-    cp[0] = max(0, z_scores[0] - k); cm[0] = max(0, -z_scores[0] - k)
-    if cp[0] > h or cm[0] > h: alarma[0] = True
-    for i in range(1, n):
-        cp[i] = max(0, cp[i-1] + z_scores[i] - k)
-        cm[i] = max(0, cm[i-1] - z_scores[i] - k)
-        if cp[i] > h or cm[i] > h: alarma[i] = True
-    primera = next((i for i,a in enumerate(alarma) if a), None)
-    max_cp  = max(cp); max_cm = max(cm)
-    tipo = None
-    if primera is not None:
-        tipo = "ascendente" if cp[primera] > h else "descendente"
-    return {
-        "cusum_pos": cp, "cusum_neg": cm, "alarma_any": alarma,
-        "primera_alarma": primera, "max_cp": round(max_cp, 3),
-        "max_cm": round(max_cm, 3), "tipo_deriva": tipo,
-    }
+def calcular_cusum(z_scores, k=0.5, h=5.0):
+    n=len(z_scores)
+    if n==0:
+        return {"cusum_pos":[],"cusum_neg":[],"alarma_any":[],"primera_alarma":None,"max_cp":0,"max_cm":0,"tipo_deriva":None}
+    cp=[0.0]*n; cm=[0.0]*n; alarma=[False]*n
+    cp[0]=max(0,z_scores[0]-k); cm[0]=max(0,-z_scores[0]-k)
+    if cp[0]>h or cm[0]>h: alarma[0]=True
+    for i in range(1,n):
+        cp[i]=max(0,cp[i-1]+z_scores[i]-k); cm[i]=max(0,cm[i-1]-z_scores[i]-k)
+        if cp[i]>h or cm[i]>h: alarma[i]=True
+    primera=next((i for i,a in enumerate(alarma) if a),None)
+    tipo=None
+    if primera is not None: tipo="ascendente" if cp[primera]>h else "descendente"
+    return {"cusum_pos":cp,"cusum_neg":cm,"alarma_any":alarma,"primera_alarma":primera,
+            "max_cp":round(max(cp),3),"max_cm":round(max(cm),3),"tipo_deriva":tipo}
 
-def build_ewma_figure(fechas, z_scores, ewma_r, analito, nivel) -> go.Figure:
-    nivel_label = NIVELES.get(nivel, NIVELES["N"])["label"]
-    lim_w = ewma_r["lim_warn"]; lim_a = ewma_r["lim_act"]
-    fig = go.Figure()
-    fig.add_hrect(y0= lim_a, y1= lim_a*2, fillcolor="rgba(229,62,62,.08)",  line_width=0)
-    fig.add_hrect(y0=-lim_a*2,y1=-lim_a,  fillcolor="rgba(229,62,62,.08)",  line_width=0)
-    fig.add_hrect(y0= lim_w, y1= lim_a,   fillcolor="rgba(245,158,11,.07)", line_width=0)
-    fig.add_hrect(y0=-lim_a, y1=-lim_w,   fillcolor="rgba(245,158,11,.07)", line_width=0)
-    fig.add_hrect(y0=-lim_w, y1= lim_w,   fillcolor="rgba(13,158,110,.05)", line_width=0)
-    for y,col,dash,name in [
-        ( lim_a,"#E53E3E","dot",  f"+3σ EWMA ({lim_a:.3f})"),
-        (-lim_a,"#E53E3E","dot",  f"-3σ EWMA"),
-        ( lim_w,"#F59E0B","dash", f"+2σ EWMA ({lim_w:.3f})"),
-        (-lim_w,"#F59E0B","dash", f"-2σ EWMA"),
-        (0,     "#0D9E6E","solid","Media (0)"),
-    ]:
+def build_ewma_figure(fechas,z_scores,ewma_r,analito,nivel):
+    nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
+    lim_w=ewma_r["lim_warn"]; lim_a=ewma_r["lim_act"]
+    fig=go.Figure()
+    fig.add_hrect(y0=lim_a,y1=lim_a*2,fillcolor="rgba(229,62,62,.08)",line_width=0)
+    fig.add_hrect(y0=-lim_a*2,y1=-lim_a,fillcolor="rgba(229,62,62,.08)",line_width=0)
+    fig.add_hrect(y0=lim_w,y1=lim_a,fillcolor="rgba(245,158,11,.07)",line_width=0)
+    fig.add_hrect(y0=-lim_a,y1=-lim_w,fillcolor="rgba(245,158,11,.07)",line_width=0)
+    fig.add_hrect(y0=-lim_w,y1=lim_w,fillcolor="rgba(13,158,110,.05)",line_width=0)
+    for y,col,dash,name in [(lim_a,"#E53E3E","dot",f"+3σ ({lim_a:.3f})"),(-lim_a,"#E53E3E","dot","-3σ"),
+                             (lim_w,"#F59E0B","dash",f"+2σ ({lim_w:.3f})"),(-lim_w,"#F59E0B","dash","-2σ"),(0,"#0D9E6E","solid","Media")]:
         fig.add_hline(y=y,line_color=col,line_width=1.5,line_dash=dash,
-                      annotation_text=name,annotation_position="right",
-                      annotation_font=dict(color=col,size=10))
-    fig.add_trace(go.Scatter(x=fechas,y=z_scores,mode="lines",name="Z-Score",
-                             line=dict(color="#CBD5E1",width=1),opacity=0.6))
-    color_map = {"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}
+                      annotation_text=name,annotation_position="right",annotation_font=dict(color=col,size=10))
+    fig.add_trace(go.Scatter(x=fechas,y=z_scores,mode="lines",name="Z-Score",line=dict(color="#CBD5E1",width=1),opacity=0.6))
+    color_map={"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}
     for estado in ["Verde","Ámbar","Rojo"]:
-        idx = [i for i,e in enumerate(ewma_r["estados"]) if e==estado]
+        idx=[i for i,e in enumerate(ewma_r["estados"]) if e==estado]
         if not idx: continue
-        fig.add_trace(go.Scatter(
-            x=[fechas[i] for i in idx], y=[ewma_r["ewma"][i] for i in idx],
-            mode="markers+lines", name=f"EWMA {estado}",
+        fig.add_trace(go.Scatter(x=[fechas[i] for i in idx],y=[ewma_r["ewma"][i] for i in idx],
+            mode="markers+lines",name=f"EWMA {estado}",
             marker=dict(size=7,color=color_map[estado],line=dict(color="#FFF",width=1)),
             line=dict(color=color_map[estado],width=2)))
-    fig.update_layout(
-        template="plotly_white",
+    fig.update_layout(template="plotly_white",
         title=dict(text=f"EWMA — {analito} · {nivel_label}",font=dict(size=13,color="#1C2B3A",family="Inter")),
         paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
         xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",tickformat="%d %b",title="Fecha"),
         yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="EWMA (σ)"),
-        height=360,margin=dict(l=10,r=140,t=50,b=40),
-        legend=dict(orientation="h",y=1.08,x=1,xanchor="right"))
+        height=360,margin=dict(l=10,r=140,t=50,b=40),legend=dict(orientation="h",y=1.08,x=1,xanchor="right"))
     return fig
 
-def build_cusum_figure(fechas, cusum_r, analito, nivel) -> go.Figure:
-    nivel_label = NIVELES.get(nivel, NIVELES["N"])["label"]
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=fechas, y=cusum_r["cusum_pos"], name="C+ (deriva ↑)",
-        marker_color=["#E53E3E" if a else "#93C5FD" for a in cusum_r["alarma_any"]],
-        opacity=0.85))
-    fig.add_trace(go.Bar(
-        x=fechas, y=[-v for v in cusum_r["cusum_neg"]], name="C− (deriva ↓)",
-        marker_color=["#F59E0B" if a else "#6EE7B7" for a in cusum_r["alarma_any"]],
-        opacity=0.85))
-    h = max(cusum_r["cusum_pos"]+[0]) if cusum_r["cusum_pos"] else 5
-    h_val = max(h, 5)
-    fig.add_hline(y=h_val, line_color="#E53E3E",line_width=1.5,line_dash="dash",
-                  annotation_text=f"h={h_val}",annotation_position="right",
-                  annotation_font=dict(color="#E53E3E",size=10))
+def build_cusum_figure(fechas,cusum_r,analito,nivel):
+    nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
+    fig=go.Figure()
+    fig.add_trace(go.Bar(x=fechas,y=cusum_r["cusum_pos"],name="C+ (↑)",
+        marker_color=["#E53E3E" if a else "#93C5FD" for a in cusum_r["alarma_any"]],opacity=0.85))
+    fig.add_trace(go.Bar(x=fechas,y=[-v for v in cusum_r["cusum_neg"]],name="C− (↓)",
+        marker_color=["#F59E0B" if a else "#6EE7B7" for a in cusum_r["alarma_any"]],opacity=0.85))
+    h_val=max(max(cusum_r["cusum_pos"]+[0]),5)
+    fig.add_hline(y=h_val,line_color="#E53E3E",line_width=1.5,line_dash="dash",
+                  annotation_text=f"h={h_val}",annotation_position="right",annotation_font=dict(color="#E53E3E",size=10))
     fig.add_hline(y=-h_val,line_color="#F59E0B",line_width=1.5,line_dash="dash",
-                  annotation_text=f"-h={h_val}",annotation_position="right",
-                  annotation_font=dict(color="#F59E0B",size=10))
-    fig.update_layout(
-        template="plotly_white", barmode="overlay",
+                  annotation_text=f"-h={h_val}",annotation_position="right",annotation_font=dict(color="#F59E0B",size=10))
+    fig.update_layout(template="plotly_white",barmode="overlay",
         title=dict(text=f"CUSUM — {analito} · {nivel_label}",font=dict(size=13,color="#1C2B3A",family="Inter")),
         paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
         xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",tickformat="%d %b",title="Fecha"),
         yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="CUSUM (σ)"),
-        height=320,margin=dict(l=10,r=140,t=50,b=40),
-        legend=dict(orientation="h",y=1.08,x=1,xanchor="right"))
+        height=320,margin=dict(l=10,r=140,t=50,b=40),legend=dict(orientation="h",y=1.08,x=1,xanchor="right"))
     return fig
 
 
 # ==============================================================
-#  8. SIGMA METRICS
+#  9. SIGMA METRICS
 # ==============================================================
 TEA_CLIA = {
     "Potasio (K+)":(8.0,"mmol/L","CLIA"),"ALT (Transaminasa)":(20.0,"U/L","CLIA"),
@@ -928,9 +933,9 @@ def calcular_sigma(df_analito, tea_pct):
 
 
 # ==============================================================
-#  9. LEVEY-JENNINGS
+#  10. LEVEY-JENNINGS
 # ==============================================================
-def build_lj_figure(df_series, analito, nivel):
+def build_lj_figure(df_series,analito,nivel):
     u=df_series.iloc[-1]; m=u["Media_Objetivo"]; sd=u["SD_Objetivo"]
     nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
     fig=go.Figure()
@@ -953,8 +958,7 @@ def build_lj_figure(df_series, analito, nivel):
         if sub.empty: continue
         fig.add_trace(go.Scatter(x=sub["Fecha"],y=sub["Valor"],mode="markers",name=estado,
                                  marker=dict(size=9,color=color,line=dict(color="#FFFFFF",width=1.5))))
-    fig.update_layout(
-        template="plotly_white",
+    fig.update_layout(template="plotly_white",
         title=dict(text=f"Levey-Jennings — {analito} · {nivel_label}",font=dict(size=13,color="#1C2B3A",family="Inter")),
         paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
         legend=dict(orientation="h",y=1.08,x=1,xanchor="right"),
@@ -969,57 +973,51 @@ def fig_to_png_bytes(fig):
 
 
 # ==============================================================
-#  10. CSV EXPORT
+#  11. CSV EXPORT
 # ==============================================================
-def generar_csv(df_log, acciones_db, claves_log) -> bytes:
+def generar_csv(df_log,acciones_db,claves_log):
     if df_log.empty: return b""
-    export = df_log.copy()
-    export["Fecha"] = export["Fecha"].dt.strftime("%d/%m/%Y")
-    export["Nivel_Label"] = export.get("_nivel_label",
-        export["Nivel"].map(lambda n: NIVELES.get(n,NIVELES["N"])["label"]))
-    export["Accion_Completada"] = ["Si" if acciones_db.get(k,False) else "No" for k in claves_log]
-    columnas = {"Fecha":"Fecha","Analito":"Analito","Nivel_Label":"Nivel","Lote":"Lote",
-                "Valor":"Valor_Medido","Media_Objetivo":"Media_Objetivo","SD_Objetivo":"SD_Objetivo",
-                "Z_Score":"Z_Score","Regla_Violada":"Regla_Westgard",
-                "Score_Riesgo":"Score_Riesgo_100","Estado":"Estado","Accion_Completada":"Accion_Completada"}
-    cols_ok = {k:v for k,v in columnas.items() if k in export.columns}
-    export = export[list(cols_ok.keys())].rename(columns=cols_ok)
-    if "Z_Score" in export.columns: export["Z_Score"] = export["Z_Score"].round(3)
+    export=df_log.copy()
+    export["Fecha"]=export["Fecha"].dt.strftime("%d/%m/%Y")
+    export["Nivel_Label"]=export.get("_nivel_label",export["Nivel"].map(lambda n:NIVELES.get(n,NIVELES["N"])["label"]))
+    export["Accion_Completada"]=["Si" if acciones_db.get(k,False) else "No" for k in claves_log]
+    columnas={"Fecha":"Fecha","Analito":"Analito","Nivel_Label":"Nivel","Lote":"Lote",
+              "Valor":"Valor_Medido","Media_Objetivo":"Media_Objetivo","SD_Objetivo":"SD_Objetivo",
+              "Z_Score":"Z_Score","Regla_Violada":"Regla_Westgard",
+              "Score_Riesgo":"Score_Riesgo_100","Estado":"Estado","Accion_Completada":"Accion_Completada"}
+    cols_ok={k:v for k,v in columnas.items() if k in export.columns}
+    export=export[list(cols_ok.keys())].rename(columns=cols_ok)
+    if "Z_Score" in export.columns: export["Z_Score"]=export["Z_Score"].round(3)
     return export.to_csv(index=False,encoding="utf-8-sig",sep=";").encode("utf-8-sig")
 
 
 # ==============================================================
-#  11. PDF
+#  12. PDF
 # ==============================================================
-def pdf_txt(s: str) -> str:
-    reemplazos={
-        "—":"-","–":"-","−":"-","±":"+/-","×":"x","÷":"/",
-        "σ":"sigma","μ":"u","→":"->","↑":"(+)","↓":"(-)",
-        "≥":">=","≤":"<=","≠":"!=","≈":"~","°":"o",
-        "\u2019":"'","\u201C":'"',"\u201D":'"',
-        "🔴":"[ROJO]","🟡":"[AMBAR]","🟢":"[VERDE]","⚡":"[R-4s]",
-        "✅":"[OK]","⚠️":"[WARN]","❌":"[ERROR]",
-        "🏆":"[*]","📋":"","📄":"","📈":"","🔬":"","•":"-","·":".",
-    }
+def pdf_txt(s):
+    reemplazos={"—":"-","–":"-","−":"-","±":"+/-","×":"x","÷":"/","σ":"sigma","μ":"u",
+                "→":"->","↑":"(+)","↓":"(-)","≥":">=","≤":"<=","≠":"!=","≈":"~","°":"o",
+                "\u2019":"'","\u201C":'"',"\u201D":'"',"🔴":"[ROJO]","🟡":"[AMBAR]",
+                "🟢":"[VERDE]","⚡":"[R-4s]","✅":"[OK]","⚠️":"[WARN]","❌":"[ERROR]",
+                "🏆":"[*]","📋":"","📄":"","📈":"","🔬":"","•":"-","·":"."}
     for orig,repl in reemplazos.items(): s=s.replace(orig,repl)
     return s.encode("latin-1",errors="replace").decode("latin-1")
 
-def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LAB. CENTRAL"):
+def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="LAB. CENTRAL"):
     class PDF(FPDF):
         def footer(self):
             self.set_y(-13); self.set_font("Helvetica","I",8); self.set_text_color(100,116,139)
-            self.cell(0,10,f"Pagina {self.page_no()}/{{nb}}  |  AIQC v4.11  |  Uso interno",align="C")
-
+            self.cell(0,10,f"Pagina {self.page_no()}/{{nb}}  |  AIQC v4.12  |  Uso interno",align="C")
     pdf=PDF(); pdf.alias_nb_pages(); pdf.set_auto_page_break(auto=True,margin=20); pdf.add_page()
     pdf.set_fill_color(26,111,196); pdf.rect(0,0,210,42,"F")
     pdf.set_font("Helvetica","B",18); pdf.set_text_color(255,255,255); pdf.ln(8)
     pdf.cell(0,10,"AIQC - Informe de Incidencias de Calidad",ln=True,align="C")
     pdf.set_font("Helvetica","B",10); pdf.cell(0,6,pdf_txt(lab_nombre),ln=True,align="C")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(220,235,255)
-    periodo = f"  |  Periodo: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}" if f_min and f_max else ""
-    pdf.cell(0,6,pdf_txt(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}{periodo}  |  Analitos: {', '.join(analitos)}"),ln=True,align="C")
+    periodo=f"  |  Periodo: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}" if f_min and f_max else ""
+    pdf.cell(0,6,pdf_txt(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}{periodo}  |  Fuente: {fuente}"),ln=True,align="C")
     pdf.ln(12)
-    niveles_disponibles = sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
+    niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
 
     def sec(txt):
         pdf.set_font("Helvetica","B",12); pdf.set_text_color(26,111,196)
@@ -1029,7 +1027,7 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
     sec("1. Resumen Ejecutivo por Nivel de Control")
     for niv in niveles_disponibles:
         frames=[evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy()) for an in analitos]
-        df_ev=pd.concat([f for f in frames if not f.empty])
+        df_ev=pd.concat([f for f in frames if not f.empty],ignore_index=True)
         if df_ev.empty: continue
         total=len(df_ev); rojos=int((df_ev["Estado"]=="Rojo").sum())
         ambar=int((df_ev["Estado"]=="Ámbar").sum()); ok=int((df_ev["Estado"]=="Verde").sum())
@@ -1038,7 +1036,7 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
         pdf.set_font("Helvetica","",9)
         pdf.cell(0,6,pdf_txt(f"  Total: {total}  |  Verde: {ok} ({100*ok//total if total else 0}%)  |  Ambar: {ambar}  |  Rojo: {rojos}"),ln=True); pdf.ln(2)
 
-    sec("1b. Semaforo de Estado por Analito y Nivel")
+    sec("2. Semaforo de Estado por Analito y Nivel")
     sw=[52,30,22,22,22,22,18]; sh=["Analito","Nivel","Ultimo Valor","Media","SD","Z-Score","Estado"]
     pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
     for w,h in zip(sw,sh): pdf.cell(w,8,h,border=1,fill=True)
@@ -1059,9 +1057,7 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
             pdf.ln()
     pdf.ln(6)
 
-    sec("2. Sigma Metrics por Analito y Nivel (CLIA)")
-    pdf.set_font("Helvetica","",8); pdf.set_text_color(80,80,80)
-    pdf.cell(0,5,"Sigma = (TEa% - Sesgo%) / CV%  |  >=6: Clase Mundial  |  >=4: Buena  |  >=3: Aceptable  |  <3: Revisar",ln=True); pdf.ln(2)
+    sec("3. Sigma Metrics (CLIA)")
     sm_w=[46,28,18,18,18,18,42]; sm_h=["Analito","Nivel","TEa%","CV%","Sesgo%","Sigma","Categoria"]
     pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
     for w,h in zip(sm_w,sm_h): pdf.cell(w,8,h,border=1,fill=True)
@@ -1084,27 +1080,7 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
             pdf.ln()
     pdf.ln(6)
 
-    sec("3. Estado por Analito y Nivel  [Z = (x - media) / SD]")
-    col_w=[40,26,20,22,22,26,22,20]; hdrs=["Analito","Nivel","Valor","Z-Score","Score","Regla","Estado","N pts"]
-    pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
-    for w,h in zip(col_w,hdrs): pdf.cell(w,8,h,border=1,fill=True)
-    pdf.ln()
-    for an in analitos:
-        for niv in niveles_disponibles:
-            sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
-            if sub.empty: continue
-            u=sub.iloc[-1]; niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
-            if u["Estado"]=="Rojo":    pdf.set_fill_color(254,226,226); pdf.set_text_color(153,27,27)
-            elif u["Estado"]=="Ámbar": pdf.set_fill_color(254,243,199); pdf.set_text_color(146,64,14)
-            else:                       pdf.set_fill_color(209,250,229); pdf.set_text_color(6,95,70)
-            pdf.set_font("Helvetica","",8)
-            for w,v in zip(col_w,[an[:22],niv_label[:14],str(u["Valor"]),pdf_txt(f"{u['Z_Score']:+.2f}"),
-                                   f"{int(u['Score_Riesgo'])}/100",pdf_txt(u["Regla_Violada"]),u["Estado"],str(len(sub))]):
-                pdf.cell(w,7,pdf_txt(str(v)),border=1,fill=True)
-            pdf.ln()
-    pdf.ln(5)
-
-    sec("4. Graficos Levey-Jennings por Analito y Nivel")
+    sec("4. Graficos Levey-Jennings")
     for an in analitos:
         for niv in niveles_disponibles:
             sub_ev=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
@@ -1115,15 +1091,13 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
                 tmp=f"/tmp/lj_{an.replace(' ','_').replace('(','').replace(')','_')}_{niv}.png"
                 open(tmp,"wb").write(png)
                 pdf.set_font("Helvetica","B",10); pdf.set_text_color(28,43,58)
-                pdf.cell(0,7,pdf_txt(f"{an} - Nivel: {niv_label}"),ln=True)
+                pdf.cell(0,7,pdf_txt(f"{an} - {niv_label}"),ln=True)
                 pdf.image(tmp,x=10,w=190); pdf.ln(4)
             else:
                 pdf.set_font("Helvetica","I",9); pdf.set_text_color(100,116,139)
                 pdf.cell(0,7,pdf_txt("[Grafico no disponible - instala kaleido]"),ln=True)
 
-    sec("4b. Evaluacion R-4s Multi-Nivel")
-    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
-    pdf.cell(0,5,pdf_txt("R-4s detecta error aleatorio: |Z_A - Z_B| >= 4.0 con signos opuestos entre niveles."),ln=True); pdf.ln(2)
+    sec("5. Evaluacion R-4s")
     hay_r4s=False
     for an in analitos:
         r4s=evaluar_r4s(df_all,an,f_min or df_all["Fecha"].min(),f_max or df_all["Fecha"].max())
@@ -1131,14 +1105,13 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
             hay_r4s=True; pdf.set_font("Helvetica","B",10); pdf.set_text_color(153,27,27)
             pdf.cell(0,7,pdf_txt(f"[R-4s] {an}: {r4s['label_a']} Z={r4s['z_a']:+.2f} vs {r4s['label_b']} Z={r4s['z_b']:+.2f} | Diff={r4s['diferencia']:.2f}sigma"),ln=True)
             pdf.set_font("Helvetica","",8); pdf.set_text_color(28,43,58)
-            pdf.multi_cell(0,5,pdf_txt("Accion: Repetir ambos niveles con viales nuevos. NO recalibrar como primer paso.")); pdf.ln(2)
+            pdf.multi_cell(0,5,pdf_txt("Accion: Repetir ambos niveles con viales nuevos. NO recalibrar.")); pdf.ln(2)
     if not hay_r4s:
         pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70)
-        pdf.cell(0,7,pdf_txt("Sin alarmas R-4s detectadas."),ln=True)
+        pdf.cell(0,7,pdf_txt("Sin alarmas R-4s."),ln=True)
     pdf.ln(4)
 
-    sec("5. Guia Bio-Rad de Acciones Correctivas")
-    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
+    sec("6. Guia Bio-Rad de Acciones Correctivas")
     alarmas=set()
     for an in analitos:
         for niv in niveles_disponibles:
@@ -1151,7 +1124,7 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
                 niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
                 pdf.set_font("Helvetica","B",10)
                 pdf.set_text_color(153,27,27) if u["Estado"]=="Rojo" else pdf.set_text_color(146,64,14)
-                pdf.cell(0,7,pdf_txt(f"{'ROJO' if u['Estado']=='Rojo' else 'AMBAR'} - {an} [{niv_label}] - Regla {u['Regla_Violada']}"),ln=True)
+                pdf.cell(0,7,pdf_txt(f"{'ROJO' if u['Estado']=='Rojo' else 'AMBAR'} - {an} [{niv_label}] - {u['Regla_Violada']}"),ln=True)
                 pdf.set_font("Helvetica","",8); pdf.set_text_color(28,43,58)
                 pdf.cell(0,5,pdf_txt(f"Producto: {kb['producto']}"),ln=True)
                 pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Causas:",ln=True)
@@ -1163,12 +1136,11 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
                     pdf.multi_cell(0,5,pdf_txt(f"  - {a}"))
                 pdf.cell(0,5,pdf_txt(f"Ref: {kb['referencia']}"),ln=True); pdf.ln(3)
     if not alarmas:
-        pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70)
-        pdf.cell(0,7,"Sin alarmas activas.",ln=True)
+        pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70); pdf.cell(0,7,"Sin alarmas.",ln=True)
 
-    pdf.add_page(); sec("6. Registro de Validacion y Firma")
+    pdf.add_page(); sec("7. Registro de Validacion y Firma")
     pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
-    pdf.cell(0,6,"Informe generado por AIQC v4.11. Revisar y validar antes de archivar.",ln=True); pdf.ln(8)
+    pdf.cell(0,6,pdf_txt(f"Informe AIQC v4.12 · Fuente: {fuente}"),ln=True); pdf.ln(8)
     fw=[65,65,60]; fh=["Elaborado por","Revisado por","Responsable de Calidad"]
     pdf.set_font("Helvetica","B",9); pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105)
     for w,h in zip(fw,fh): pdf.cell(w,8,h,border=1,fill=True)
@@ -1188,247 +1160,235 @@ def generar_pdf(df_all, analitos, fuente, f_min=None, f_max=None, lab_nombre="LA
 
 
 # ==============================================================
-#  12. ASISTENTE IA GEMINI — v4.11
+#  13. ASISTENTE IA GEMINI v4.12
 # ==============================================================
-
-# Frases puramente conversacionales que NO necesitan datos de laboratorio
 _SALUDOS = {
-    "hola", "buenas", "buenos días", "buenos dias", "buenas tardes",
-    "buenas noches", "hey", "hi", "hello", "ey",
-    "gracias", "muchas gracias", "de nada", "ok", "vale", "perfecto",
-    "genial", "entendido", "de acuerdo", "claro", "bien", "muy bien",
-    "adiós", "adios", "hasta luego", "bye", "chao",
-    "¿cómo estás?", "como estas", "¿qué tal?", "que tal",
-    "¿quién eres?", "quien eres", "¿qué eres?", "que eres",
-    "¿qué puedes hacer?", "que puedes hacer", "ayuda", "help",
+    "hola","buenas","buenos días","buenos dias","buenas tardes","buenas noches",
+    "hey","hi","hello","ey","gracias","muchas gracias","de nada","ok","vale",
+    "perfecto","genial","entendido","de acuerdo","claro","bien","muy bien",
+    "adiós","adios","hasta luego","bye","chao","¿cómo estás?","como estas",
+    "¿qué tal?","que tal","¿quién eres?","quien eres","¿qué eres?","que eres",
+    "¿qué puedes hacer?","que puedes hacer","ayuda","help",
 }
 
-# Vocabulario que indica que la pregunta SÍ requiere datos del laboratorio
 _PALABRAS_TECNICAS_QC = {
-    "analito", "control", "qc", "westgard", "alarma", "alerta",
-    "zscore", "z-score", "levey", "jennings", "ewma", "cusum",
-    "sigma", "cv", "sd", "media", "valor", "resultado", "regla",
-    "deriva", "tendencia", "calibr", "reactivo", "potasio", "sodio",
-    "glucosa", "alt", "ast", "creatinina", "colesterol", "hemoglobina",
-    "r-4s", "r4s", "1_3s", "2_2s", "4_1s", "10_x", "bio-rad",
-    "biorad", "lote", "nivel", "normal", "patológico", "patologico",
-    "informe", "pdf", "csv", "exportar", "incidencia", "laboratorio",
-    "analisis", "análisis", "muestra", "paciente", "clinico", "clínico",
+    "analito","control","qc","westgard","alarma","alerta","zscore","z-score",
+    "levey","jennings","ewma","cusum","sigma","cv","sd","media","valor","resultado",
+    "regla","deriva","tendencia","calibr","reactivo","potasio","sodio","glucosa",
+    "alt","ast","creatinina","colesterol","hemoglobina","r-4s","r4s","1_3s","2_2s",
+    "4_1s","10_x","bio-rad","biorad","lote","nivel","normal","patológico","patologico",
+    "informe","pdf","csv","exportar","incidencia","laboratorio","analisis","análisis",
+    "muestra","paciente","clinico","clínico","cobas","openlab","ise","fotométrico",
+    "fotometrico","pipeta","bandeja","verde","calibracion","calibración","mantenimiento",
+    "interlock","electrodo","absorbancia","enzima",
 }
 
-def _necesita_datos_qc(pregunta: str) -> bool:
-    """
-    Devuelve True si la pregunta requiere los datos reales del laboratorio.
-    Devuelve False para saludos, preguntas generales o conversación casual.
-
-    Lógica:
-      - Si coincide exactamente con un saludo conocido → False
-      - Si tiene ≤3 palabras y no contiene vocabulario QC → False
-      - En cualquier otro caso → True  (incluye preguntas generales
-        no técnicas de QC, que Gemini responderá sin datos pero con
-        su conocimiento general)
-    """
+def _necesita_datos_qc(pregunta):
     texto = pregunta.strip().lower().rstrip(".,!?¿¡ ")
-
-    # Criterio 1: saludo/despedida exacto
-    if texto in _SALUDOS:
-        return False
-
-    # Criterio 2: mensaje muy corto sin vocabulario QC
+    if texto in _SALUDOS: return False
     palabras = texto.split()
-    if len(palabras) <= 3:
-        if not any(tec in texto for tec in _PALABRAS_TECNICAS_QC):
-            return False
-
-    # Criterio 3: mensaje más largo pero sin ninguna palabra técnica de QC
-    # → Gemini responde con conocimiento general (sin datos del lab)
-    if not any(tec in texto for tec in _PALABRAS_TECNICAS_QC):
-        return False
-
+    if len(palabras) <= 3 and not any(t in texto for t in _PALABRAS_TECNICAS_QC): return False
+    if not any(t in texto for t in _PALABRAS_TECNICAS_QC): return False
     return True
-
 
 MAX_TURNS = 10
 
-def ia_responde_gemini(pregunta, historial, df_all, analitos_ls, f_min, f_max):
-    api_key = get_api_key()
-    if not api_key:
-        return "❌ **API Key de Gemini no configurada.**"
-
+def ia_responde_gemini(pregunta,historial,df_all,analitos_ls,f_min,f_max):
+    api_key=get_api_key()
+    if not api_key: return "❌ **API Key de Gemini no configurada.**"
     genai.configure(api_key=api_key)
+    niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
 
-    niveles_disponibles = (
-        sorted(df_all["Nivel"].unique())
-        if "Nivel" in df_all.columns else ["N"]
-    )
-
-    # ----------------------------------------------------------
-    #  Construir contexto: solo incluir datos QC si la pregunta
-    #  los necesita. Para el resto, Gemini responde libremente.
-    # ----------------------------------------------------------
     if _necesita_datos_qc(pregunta):
-        resumen = []
+        resumen=[]
         for an in analitos_ls:
             for niv in niveles_disponibles:
-                sub = evaluar_westgard(
-                    df_all[
-                        (df_all["Analito"] == an) &
-                        (df_all["Nivel"] == niv) &
-                        (df_all["Fecha"] >= pd.Timestamp(f_min)) &
-                        (df_all["Fecha"] <= pd.Timestamp(f_max))
-                    ].copy()
-                )
-                if sub.empty:
-                    continue
-                u = sub.iloc[-1]
-                z_calc = (u["Valor"] - u["Media_Objetivo"]) / u["SD_Objetivo"]
-                tea = TEA_CLIA.get(an, (TEA_DEFAULT, "", ""))[0]
-                sig = calcular_sigma(sub, tea)
-                niv_label = NIVELES.get(niv, NIVELES["N"])["label"]
-                kb = buscar_kb(an, u["Estado"])
-                kb_txt = ""
-                if kb and u["Estado"] != "Verde":
-                    kb_txt = (
-                        f"\n  - Bio-Rad causas: {'; '.join(kb['causas_comunes'][:2])}"
-                        f"\n  - Bio-Rad acciones: {'; '.join((kb['acciones_1_3s'] if u['Estado'] == 'Rojo' else kb['acciones_warn'])[:2])}"
-                    )
-                resumen.append(
-                    f"• {an} | Nivel: {niv_label}\n"
-                    f"  - Valor:{u['Valor']} Media:{u['Media_Objetivo']} SD:{u['SD_Objetivo']}\n"
-                    f"  - Z={z_calc:+.3f} Estado:{u['Estado']} Regla:{u['Regla_Violada']} Score:{int(u['Score_Riesgo'])}/100\n"
-                    f"  - Sigma:{sig.get('sigma','N/A')}sigma CV:{sig.get('cv_pct','N/A')}%{kb_txt}"
-                )
-
-        r4s_lines = []
+                sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)&
+                    (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy())
+                if sub.empty: continue
+                u=sub.iloc[-1]; z_calc=(u["Valor"]-u["Media_Objetivo"])/u["SD_Objetivo"]
+                tea=TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]; sig=calcular_sigma(sub,tea)
+                niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
+                kb=buscar_kb(an,u["Estado"]); kb_txt=""
+                if kb and u["Estado"]!="Verde":
+                    kb_txt=(f"\n  - Bio-Rad causas: {'; '.join(kb['causas_comunes'][:2])}"
+                            f"\n  - Bio-Rad acciones: {'; '.join((kb['acciones_1_3s'] if u['Estado']=='Rojo' else kb['acciones_warn'])[:2])}")
+                resumen.append(f"• {an} | Nivel: {niv_label}\n"
+                               f"  - Valor:{u['Valor']} Media:{u['Media_Objetivo']} SD:{u['SD_Objetivo']}\n"
+                               f"  - Z={z_calc:+.3f} Estado:{u['Estado']} Regla:{u['Regla_Violada']} Score:{int(u['Score_Riesgo'])}/100\n"
+                               f"  - Sigma:{sig.get('sigma','N/A')}sigma CV:{sig.get('cv_pct','N/A')}%{kb_txt}")
+        r4s_lines=[]
         for an in analitos_ls:
-            r4s = evaluar_r4s(df_all, an, f_min, f_max)
+            r4s=evaluar_r4s(df_all,an,f_min,f_max)
             if r4s:
-                r4s_lines.append(
-                    f"  [R-4s] {an}: {r4s['label_a']} Z={r4s['z_a']:+.2f} "
-                    f"vs {r4s['label_b']} Z={r4s['z_b']:+.2f} (error aleatorio)"
-                )
-        r4s_sec = (
-            "=== ALARMAS R-4s ===\n" + "\n".join(r4s_lines) + "\n\n"
-            if r4s_lines else ""
-        )
-
-        contexto = (
-            f"=== DATOS REALES DEL LABORATORIO ({f_min} - {f_max}) ===\n"
-            f"{chr(10).join(resumen)}\n\n"
-            f"{r4s_sec}"
-            f"=== REGLAS WESTGARD ===\n{REGLAS_DESC}\n\n"
-            f"=== PREGUNTA ===\n{pregunta}"
-        )
+                r4s_lines.append(f"  [R-4s] {an}: {r4s['label_a']} Z={r4s['z_a']:+.2f} vs {r4s['label_b']} Z={r4s['z_b']:+.2f}")
+        r4s_sec=("=== ALARMAS R-4s ===\n"+"\n".join(r4s_lines)+"\n\n") if r4s_lines else ""
+        contexto=(f"=== DATOS REALES ({f_min} - {f_max}) ===\n{chr(10).join(resumen)}\n\n"
+                  f"{r4s_sec}"
+                  f"=== COBAS 8000 MANUAL ===\n{COBAS_8000_KB}\n\n"
+                  f"=== REGLAS WESTGARD ===\n{REGLAS_DESC}\n\n"
+                  f"=== PREGUNTA ===\n{pregunta}")
     else:
-        # Sin datos de laboratorio: Gemini responde libremente
-        # (saludo, tema general, curiosidad, etc.)
-        contexto = f"=== PREGUNTA ===\n{pregunta}"
+        contexto=f"=== PREGUNTA ===\n{pregunta}"
 
-    # ----------------------------------------------------------
-    #  Llamada a la API con fallback entre modelos
-    # ----------------------------------------------------------
-    recent = historial[1:][-MAX_TURNS * 2:]
-    gemini_hist = [
-        {
-            "role": "user" if m["role"] == "user" else "model",
-            "parts": [m["content"]],
-        }
-        for m in recent
-    ]
-
-    last_error = ""
+    recent=historial[1:][-MAX_TURNS*2:]
+    gemini_hist=[{"role":"user" if m["role"]=="user" else "model","parts":[m["content"]]} for m in recent]
+    last_error=""
     for model_name in GEMINI_MODELS:
         try:
-            m = genai.GenerativeModel(
-                model_name=model_name,
-                generation_config=GEMINI_CFG,
-                system_instruction=GEMINI_SYSTEM,
-            )
-            chat = m.start_chat(history=gemini_hist)
-            resp = chat.send_message(contexto)
-            st.session_state["gemini_model_active"] = model_name
-            return resp.text
+            m=genai.GenerativeModel(model_name=model_name,generation_config=GEMINI_CFG,system_instruction=GEMINI_SYSTEM)
+            chat=m.start_chat(history=gemini_hist); resp=chat.send_message(contexto)
+            st.session_state["gemini_model_active"]=model_name; return resp.text
         except Exception as e:
-            last_error = str(e)
-            if "api_key" in last_error.lower() or "403" in last_error:
-                return "❌ API Key inválida."
+            last_error=str(e)
+            if "api_key" in last_error.lower() or "403" in last_error: return "❌ API Key inválida."
             continue
-
     return f"⚠️ Modelos no disponibles.\n\n_Error: {last_error}_"
 
 
 # ==============================================================
-#  13. SIDEBAR
+#  14. SIDEBAR
 # ==============================================================
 with st.sidebar:
     st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sb-sub">Quality Control · v4.11 · Bio-Rad KB</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sb-sub">Quality Control · v4.12 · OpenLab + cobas 8000</div>', unsafe_allow_html=True)
     st.markdown("---")
+
     st.markdown("**📂 Fuente de datos**")
-    uploaded=st.file_uploader("CSV o Excel",type=["csv","xlsx","xls"],
-        help="Columnas: Fecha, Analito, Nivel (N/PB/PA), Valor, Media_Objetivo, SD_Objetivo, Lote.")
-    if uploaded:
-        df_cargado,err=leer_archivo(uploaded)
-        if df_cargado is not None:
-            df_all=df_cargado; data_src=f"📄 {uploaded.name}"
-            st.markdown(f'<div class="data-pill">✅ <b>{uploaded.name}</b><br>{len(df_all)} filas · {df_all["Analito"].nunique()} analito(s)</div>',unsafe_allow_html=True)
+    tab_src1, tab_src2 = st.tabs(["📤 Subir archivo", "☁️ GitHub / OpenLab"])
+
+    # ── TAB 1: subida manual ──────────────────────────────────
+    with tab_src1:
+        uploaded = st.file_uploader("CSV o Excel", type=["csv","xlsx","xls"],
+            help="Columnas: Fecha, Analito, Nivel (N/PB/PA), Valor, Media_Objetivo, SD_Objetivo, Lote.",
+            key="uploader_manual")
+        if uploaded:
+            df_cargado, err = leer_archivo(uploaded)
+            if df_cargado is not None:
+                st.session_state["df_manual"]      = df_cargado
+                st.session_state["data_src_manual"] = f"📄 {uploaded.name}"
+                st.markdown(f'<div class="data-pill">✅ <b>{uploaded.name}</b><br>'
+                            f'{len(df_cargado)} filas · {df_cargado["Analito"].nunique()} analito(s)</div>',
+                            unsafe_allow_html=True)
+            else:
+                st.error(err)
+
+    # ── TAB 2: GitHub / OpenLab ───────────────────────────────
+    with tab_src2:
+        cfg_gh = st.secrets.get("github", {})
+        tiene_config = bool(cfg_gh.get("usuario") and cfg_gh.get("repo") and cfg_gh.get("archivo"))
+
+        if not tiene_config:
+            st.warning("Configura `[github]` en `.streamlit/secrets.toml`:\n\n"
+                       "```toml\n[github]\nusuario = \"TU_USUARIO\"\nrepo = \"aiqc\"\n"
+                       "rama = \"main\"\narchivo = \"data/controles_qc.csv\"\n"
+                       "token = \"ghp_...\"\n```")
         else:
-            st.error(err); df_all=build_demo(datetime.today().strftime("%Y-%m-%d")); data_src="Demo (error)"
-    else:
-        df_all=build_demo(datetime.today().strftime("%Y-%m-%d")); data_src="🔬 Modo Demo"
-        st.caption("Datos simulados con 3 niveles de control.")
+            ultima_sync = st.session_state.get("github_last_sync")
+            msg_gh      = st.session_state.get("data_src_github","Sin sincronizar aún")
+
+            if ultima_sync:
+                st.markdown(f'<div class="sync-pill">☁️ <b>OpenLab · GitHub</b><br>{msg_gh}</div>',
+                            unsafe_allow_html=True)
+            else:
+                st.caption("Pulsa para cargar datos desde OpenLab vía GitHub.")
+
+            if st.button("🔄 Sincronizar ahora", use_container_width=True, type="primary", key="btn_sync_gh"):
+                with st.spinner("Conectando con GitHub…"):
+                    df_gh, msg = leer_csv_github()
+                    if df_gh is not None:
+                        st.session_state["df_github"]        = df_gh
+                        st.session_state["data_src_github"]  = msg
+                        st.session_state["github_last_sync"] = datetime.now()
+                        st.success(msg); st.rerun()
+                    else:
+                        st.error(msg)
+
+            # Auto-refresco silencioso en segundo plano
+            if tiene_config and st.session_state.get("df_github") is not None:
+                _auto_refresh_github()
+
+            # Checkbox auto-sync al iniciar
+            auto_sync = st.checkbox("Auto-sincronizar al iniciar", key="auto_sync_gh",
+                                    help="Recarga datos automáticamente cada 60 min desde GitHub")
+            if auto_sync and st.session_state.get("df_github") is None:
+                with st.spinner("Cargando datos OpenLab desde GitHub…"):
+                    df_gh, msg = leer_csv_github()
+                    if df_gh is not None:
+                        st.session_state["df_github"]        = df_gh
+                        st.session_state["data_src_github"]  = msg
+                        st.session_state["github_last_sync"] = datetime.now()
+                        st.rerun()
 
     st.markdown("---")
-    analito=st.selectbox("Analito activo",options=sorted(df_all["Analito"].unique()),key="sel_analito")
-    niveles_analito=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
-    nivel_options={NIVELES.get(n,NIVELES["N"])["label"]:n for n in niveles_analito}
-    nivel_sel_label=st.selectbox("Nivel de control",options=list(nivel_options.keys()),key="sel_nivel",
-                                  help="N=Normal · PB=Patológico Bajo · PA=Patológico Alto")
-    nivel_activo=nivel_options[nivel_sel_label]
 
-    fechas_d=sorted(df_all["Fecha"].dropna().unique())
-    if len(fechas_d)>=2:
-        f_min=st.date_input("Desde",value=pd.Timestamp(fechas_d[0]).date(),
-                            min_value=pd.Timestamp(fechas_d[0]).date(),max_value=pd.Timestamp(fechas_d[-1]).date(),key="f1")
-        f_max=st.date_input("Hasta",value=pd.Timestamp(fechas_d[-1]).date(),
-                            min_value=pd.Timestamp(fechas_d[0]).date(),max_value=pd.Timestamp(fechas_d[-1]).date(),key="f2")
+    # Prioridad: GitHub > Manual > Demo
+    df_github = st.session_state.get("df_github")
+    df_manual = st.session_state.get("df_manual")
+    if df_github is not None:
+        df_all   = df_github
+        data_src = f"☁️ OpenLab·GitHub"
+    elif df_manual is not None:
+        df_all   = df_manual
+        data_src = st.session_state.get("data_src_manual","📄 Archivo")
     else:
-        f_min=f_max=pd.Timestamp(fechas_d[0]).date() if fechas_d else datetime.today().date()
+        df_all   = build_demo(datetime.today().strftime("%Y-%m-%d"))
+        data_src = "🔬 Modo Demo"
+        st.caption("Sin datos cargados — mostrando datos simulados.")
+
+    analito = st.selectbox("Analito activo", options=sorted(df_all["Analito"].unique()), key="sel_analito")
+    niveles_analito  = sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
+    nivel_options    = {NIVELES.get(n,NIVELES["N"])["label"]:n for n in niveles_analito}
+    nivel_sel_label  = st.selectbox("Nivel de control", options=list(nivel_options.keys()), key="sel_nivel",
+                                     help="N=Normal · PB=Patológico Bajo · PA=Patológico Alto")
+    nivel_activo     = nivel_options[nivel_sel_label]
+
+    fechas_d = sorted(df_all["Fecha"].dropna().unique())
+    if len(fechas_d) >= 2:
+        f_min = st.date_input("Desde", value=pd.Timestamp(fechas_d[0]).date(),
+                              min_value=pd.Timestamp(fechas_d[0]).date(),
+                              max_value=pd.Timestamp(fechas_d[-1]).date(), key="f1")
+        f_max = st.date_input("Hasta", value=pd.Timestamp(fechas_d[-1]).date(),
+                              min_value=pd.Timestamp(fechas_d[0]).date(),
+                              max_value=pd.Timestamp(fechas_d[-1]).date(), key="f2")
+    else:
+        f_min = f_max = pd.Timestamp(fechas_d[0]).date() if fechas_d else datetime.today().date()
 
     st.markdown("---")
     st.markdown("**Estado del laboratorio**")
     for an in sorted(df_all["Analito"].unique()):
         for niv in sorted(df_all[df_all["Analito"]==an]["Nivel"].unique()):
-            sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
-            est=sub.iloc[-1]["Estado"]; led={"Verde":"🟢","Ámbar":"🟡","Rojo":"🔴"}.get(est,"⚪")
+            sub = evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
+            est = sub.iloc[-1]["Estado"]
+            led = {"Verde":"🟢","Ámbar":"🟡","Rojo":"🔴"}.get(est,"⚪")
             st.markdown(f"{led} **{an}** · {NIVELES.get(niv,NIVELES['N'])['label']} — {est}")
-        r4s_sb=evaluar_r4s(df_all,an,f_min,f_max)
+        r4s_sb = evaluar_r4s(df_all, an, f_min, f_max)
         if r4s_sb:
             st.markdown(f"⚡ **{an}** · R-4s: {r4s_sb['label_a']} vs {r4s_sb['label_b']}")
 
     st.markdown("---")
-    if st.button("Cerrar sesión",use_container_width=True):
-        st.session_state["auth"]=False; st.rerun()
+    if st.button("Cerrar sesión", use_container_width=True):
+        st.session_state["auth"] = False; st.rerun()
     st.caption(f"Fuente: {data_src}")
 
 
 # ==============================================================
-#  14. DATOS ACTIVOS
+#  15. DATOS ACTIVOS
 # ==============================================================
-df_raw=df_all[(df_all["Analito"]==analito)&(df_all["Nivel"]==nivel_activo)&
-              (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy()
-df_series=evaluar_westgard(df_raw)
-ultima=df_series.iloc[-1] if not df_series.empty else None
-analitos_ls=sorted(df_all["Analito"].unique())
-ESTADO_CLS={"Verde":"estado-verde","Ámbar":"estado-ambar","Rojo":"estado-rojo"}
-r4s_result=evaluar_r4s(df_all,analito,f_min,f_max)
+df_raw    = df_all[(df_all["Analito"]==analito)&(df_all["Nivel"]==nivel_activo)&
+                   (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy()
+df_series = evaluar_westgard(df_raw)
+ultima    = df_series.iloc[-1] if not df_series.empty else None
+analitos_ls = sorted(df_all["Analito"].unique())
+ESTADO_CLS  = {"Verde":"estado-verde","Ámbar":"estado-ambar","Rojo":"estado-rojo"}
+r4s_result  = evaluar_r4s(df_all, analito, f_min, f_max)
 
 
 # ==============================================================
-#  15. CABECERA
+#  16. CABECERA
 # ==============================================================
-estado_actual=ultima["Estado"] if ultima is not None else "Verde"
+estado_actual = ultima["Estado"] if ultima is not None else "Verde"
 st.markdown(f"""
 <div class="aiqc-header">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
@@ -1447,15 +1407,11 @@ st.markdown(f"""
 
 
 # ==============================================================
-#  16. TABS
+#  17. TABS
 # ==============================================================
 tab_dash,tab_ewma,tab_sigma,tab_biorad,tab_chat,tab_log = st.tabs([
-    "📊  Dashboard",
-    "📉  EWMA/CUSUM",
-    "📈  Sigma Metrics",
-    "📋  Guía Bio-Rad",
-    "🤖  Asistente IA",
-    "📝  Registro",
+    "📊  Dashboard","📉  EWMA/CUSUM","📈  Sigma Metrics",
+    "📋  Guía Bio-Rad","🤖  Asistente IA","📝  Registro",
 ])
 
 
@@ -1515,44 +1471,31 @@ with tab_dash:
 # ── TAB 2: EWMA / CUSUM ──────────────────────────────────────
 with tab_ewma:
     st.markdown("### 📉 EWMA / CUSUM — Detección Temprana de Tendencias")
-    st.caption("EWMA detecta derivas graduales antes de que disparen las reglas de Westgard. "
-               "CUSUM acumula desviaciones para identificar el punto exacto de inicio de la deriva.")
-
     if df_series.empty or ultima is None:
         st.warning("No hay datos para el analito/nivel/rango seleccionado.")
     else:
-        z_scores = df_series["Z_Score"].tolist()
-        fechas   = df_series["Fecha"].tolist()
+        z_scores=df_series["Z_Score"].tolist(); fechas=df_series["Fecha"].tolist()
+        with st.expander("⚙️ Parámetros EWMA y CUSUM",expanded=False):
+            col_p1,col_p2,col_p3=st.columns(3)
+            with col_p1: lam=st.slider("λ EWMA",0.05,0.50,0.20,0.05,key="ewma_lam")
+            with col_p2: cusum_k=st.slider("k CUSUM",0.25,1.0,0.5,0.25,key="cusum_k")
+            with col_p3: cusum_h=st.slider("h CUSUM",2.0,8.0,5.0,0.5,key="cusum_h")
 
-        with st.expander("⚙️ Parámetros EWMA y CUSUM", expanded=False):
-            col_p1,col_p2,col_p3 = st.columns(3)
-            with col_p1:
-                lam = st.slider("λ EWMA (sensibilidad)",0.05,0.50,0.20,0.05,key="ewma_lam",
-                                help="λ pequeño = más sensible a derivas lentas.")
-            with col_p2:
-                cusum_k = st.slider("k CUSUM (allowance)",0.25,1.0,0.5,0.25,key="cusum_k",
-                                    help="Margen de tolerancia. 0.5σ es el valor estándar.")
-            with col_p3:
-                cusum_h = st.slider("h CUSUM (umbral alarma)",2.0,8.0,5.0,0.5,key="cusum_h",
-                                    help="Umbral de decisión. h=5 es el valor estándar.")
-
-        ewma_r  = calcular_ewma(z_scores, lam=lam)
-        cusum_r = calcular_cusum(z_scores, k=cusum_k, h=cusum_h)
-
-        ewma_estado  = ewma_r["estados"][-1] if ewma_r["estados"] else "Verde"
-        cusum_alarma = cusum_r["primera_alarma"] is not None
-        risk_ewma    = {"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}.get(ewma_estado,"#0D9E6E")
-        risk_cusum   = "#E53E3E" if cusum_alarma else "#0D9E6E"
-        n_ambar_ewma = sum(1 for e in ewma_r["estados"] if e=="Ámbar")
-        n_rojo_ewma  = sum(1 for e in ewma_r["estados"] if e=="Rojo")
+        ewma_r=calcular_ewma(z_scores,lam=lam); cusum_r=calcular_cusum(z_scores,k=cusum_k,h=cusum_h)
+        ewma_estado=ewma_r["estados"][-1] if ewma_r["estados"] else "Verde"
+        cusum_alarma=cusum_r["primera_alarma"] is not None
+        risk_ewma={"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}.get(ewma_estado,"#0D9E6E")
+        risk_cusum="#E53E3E" if cusum_alarma else "#0D9E6E"
+        n_ambar_ewma=sum(1 for e in ewma_r["estados"] if e=="Ámbar")
+        n_rojo_ewma=sum(1 for e in ewma_r["estados"] if e=="Rojo")
 
         kc1,kc2,kc3,kc4,kc5=st.columns(5)
         for col,val,lbl,color,sub in [
-            (kc1,f"{ewma_r['ultimo_ewma']:+.3f}σ","EWMA Actual",       risk_ewma,  ewma_estado),
-            (kc2,f"{ewma_r['sigma_ewma']:.4f}",   "σ EWMA asintótica","#4F6FA8",  f"λ={lam}"),
-            (kc3,f"{n_rojo_ewma}",                "Puntos EWMA Rojo", "#E53E3E",  f"{n_ambar_ewma} ámbar"),
-            (kc4,f"{cusum_r['max_cp']:.2f}",      "CUSUM+ Máx",       risk_cusum, f"umbral h={cusum_h}"),
-            (kc5,f"{cusum_r['max_cm']:.2f}",      "CUSUM− Máx",       risk_cusum, f"k={cusum_k}"),
+            (kc1,f"{ewma_r['ultimo_ewma']:+.3f}σ","EWMA Actual",risk_ewma,ewma_estado),
+            (kc2,f"{ewma_r['sigma_ewma']:.4f}","σ EWMA","#4F6FA8",f"λ={lam}"),
+            (kc3,f"{n_rojo_ewma}","Puntos Rojo","#E53E3E",f"{n_ambar_ewma} ámbar"),
+            (kc4,f"{cusum_r['max_cp']:.2f}","CUSUM+ Máx",risk_cusum,f"h={cusum_h}"),
+            (kc5,f"{cusum_r['max_cm']:.2f}","CUSUM− Máx",risk_cusum,f"k={cusum_k}"),
         ]:
             with col:
                 st.markdown(f'<div class="kpi-card"><div class="kpi-val" style="color:{color}">{val}</div>'
@@ -1561,68 +1504,40 @@ with tab_ewma:
         st.markdown("<br>",unsafe_allow_html=True)
         alerta_mostrada=False
         if ewma_estado=="Rojo":
-            st.error(f"🔴 **EWMA en zona ROJA** — Deriva sistemática sostenida. Valor: **{ewma_r['ultimo_ewma']:+.3f}σ**. Acción correctiva inmediata.")
-            alerta_mostrada=True
+            st.error(f"🔴 **EWMA ROJA** — Deriva sostenida: **{ewma_r['ultimo_ewma']:+.3f}σ**"); alerta_mostrada=True
         elif ewma_estado=="Ámbar":
             inicio=ewma_r["inicio_deriva"]
             fecha_inicio=fechas[inicio].strftime("%d/%m/%Y") if inicio is not None else "—"
-            st.warning(f"⚠️ **EWMA en zona ÁMBAR** — Tendencia detectada desde **{fecha_inicio}**. Valor: **{ewma_r['ultimo_ewma']:+.3f}σ**.")
-            alerta_mostrada=True
+            st.warning(f"⚠️ **EWMA ÁMBAR** — Tendencia desde **{fecha_inicio}**: **{ewma_r['ultimo_ewma']:+.3f}σ**"); alerta_mostrada=True
         if cusum_alarma:
             fecha_cusum=fechas[cusum_r["primera_alarma"]].strftime("%d/%m/%Y")
             tipo_txt="ascendente ↑" if cusum_r["tipo_deriva"]=="ascendente" else "descendente ↓"
-            st.error(f"🔴 **CUSUM alarma** — Deriva **{tipo_txt}** desde **{fecha_cusum}**. C+={cusum_r['max_cp']:.2f} / C−={cusum_r['max_cm']:.2f}")
-            alerta_mostrada=True
+            st.error(f"🔴 **CUSUM alarma** — Deriva {tipo_txt} desde **{fecha_cusum}**"); alerta_mostrada=True
         if not alerta_mostrada:
-            st.success(f"✅ **Proceso bajo control** — EWMA={ewma_r['ultimo_ewma']:+.3f}σ. CUSUM C+={cusum_r['max_cp']:.2f}/C−={cusum_r['max_cm']:.2f} bajo umbral.")
+            st.success(f"✅ Proceso bajo control — EWMA={ewma_r['ultimo_ewma']:+.3f}σ C+={cusum_r['max_cp']:.2f} C−={cusum_r['max_cm']:.2f}")
 
         st.markdown('<div class="sec-head">Gráfico EWMA</div>',unsafe_allow_html=True)
         st.plotly_chart(build_ewma_figure(fechas,z_scores,ewma_r,analito,nivel_activo),use_container_width=True)
-
         st.markdown('<div class="sec-head">Gráfico CUSUM</div>',unsafe_allow_html=True)
         st.plotly_chart(build_cusum_figure(fechas,cusum_r,analito,nivel_activo),use_container_width=True)
 
         st.markdown('<div class="sec-head">Tabla EWMA / CUSUM</div>',unsafe_allow_html=True)
         tabla_ec=pd.DataFrame({
-            "Fecha":      [f.strftime("%d/%m/%Y") for f in fechas],
-            "Z-Score":    [round(z,3) for z in z_scores],
-            "EWMA":       [round(e,4) for e in ewma_r["ewma"]],
-            "Estado EWMA":[e for e in ewma_r["estados"]],
-            "CUSUM+":     [round(c,3) for c in cusum_r["cusum_pos"]],
-            "CUSUM−":     [round(c,3) for c in cusum_r["cusum_neg"]],
-            "Alarma":     ["🔴 SÍ" if a else "✅ No" for a in cusum_r["alarma_any"]],
+            "Fecha":[f.strftime("%d/%m/%Y") for f in fechas],
+            "Z-Score":[round(z,3) for z in z_scores],
+            "EWMA":[round(e,4) for e in ewma_r["ewma"]],
+            "Estado EWMA":ewma_r["estados"],
+            "CUSUM+":[round(c,3) for c in cusum_r["cusum_pos"]],
+            "CUSUM−":[round(c,3) for c in cusum_r["cusum_neg"]],
+            "Alarma":["🔴 SÍ" if a else "✅ No" for a in cusum_r["alarma_any"]],
         })
         tabla_ec["Estado EWMA"]=tabla_ec["Estado EWMA"].apply(estado_badge)
         st.write(tabla_ec.to_html(escape=False,index=False),unsafe_allow_html=True)
-
-        st.markdown('<div class="sec-head">Interpretación técnica</div>',unsafe_allow_html=True)
-        col_i1,col_i2=st.columns(2)
-        with col_i1:
-            st.markdown(f"""**EWMA (λ={lam})**
-- λ pequeño → mayor memoria histórica → más sensible a derivas lentas
-- Límites: ±{ewma_r['lim_warn']:.3f}σ (advertencia) y ±{ewma_r['lim_act']:.3f}σ (acción)
-- Último valor: **{ewma_r['ultimo_ewma']:+.4f}σ**""")
-        with col_i2:
-            tipo_d=cusum_r.get("tipo_deriva"); tipo_str=f"**{tipo_d}**" if tipo_d else "no detectada"
-            st.markdown(f"""**CUSUM (k={cusum_k}, h={cusum_h})**
-- k=0.5σ detecta desplazamientos de 1σ con ARL≈43 puntos
-- h=5 es el estándar CLSI para laboratorio clínico
-- Deriva: {tipo_str} · Primera alarma: punto **{cusum_r['primera_alarma']+1 if cusum_r['primera_alarma'] is not None else '—'}**""")
-
-        st.markdown('<div class="sec-head">Comparativa EWMA/CUSUM vs Westgard</div>',unsafe_allow_html=True)
-        n_viol_wg=len(df_series[df_series["Estado"]!="Verde"])
-        st.write(pd.DataFrame({
-            "Método":        ["Westgard (1_3s/2_2s/4_1s)","EWMA","CUSUM"],
-            "Alarma activa": ["🔴 Sí" if n_viol_wg>0 else "✅ No","🔴 Sí" if ewma_estado!="Verde" else "✅ No","🔴 Sí" if cusum_alarma else "✅ No"],
-            "Tipo detección":["Reglas discretas por punto","Promedio ponderado exponencial","Suma acumulada de desviaciones"],
-            "Sensibilidad":  ["Alta errores aleatorios grandes","Alta derivas lentas sostenidas","Alta desplazamientos de la media"],
-        }).to_html(escape=False,index=False),unsafe_allow_html=True)
 
 
 # ── TAB 3: SIGMA METRICS ─────────────────────────────────────
 with tab_sigma:
     st.markdown("### 📈 Sigma Metrics — Evaluación de Calidad Analítica")
-    st.caption("Sigma = (TEa% − Sesgo%) / CV%  ·  TEa según criterios CLIA  ·  Desglosado por nivel.")
     with st.expander("⚙️ Editar límites TEa por analito",expanded=False):
         tea_editado={}
         cols_tea=st.columns(min(len(analitos_ls),3))
@@ -1662,8 +1577,7 @@ with tab_sigma:
             fig_s.add_trace(go.Bar(name=NIVELES.get(niv,NIVELES["N"])["label"],
                 x=[d["analito"].split("(")[0].strip() for d in niv_data],y=[d["sigma"] for d in niv_data],
                 marker_color=colores_nivel.get(niv,"#1A6FC4"),marker_line_color="#FFFFFF",marker_line_width=1.5,
-                text=[f"{d['sigma']}σ" for d in niv_data],textposition="outside",
-                hovertemplate="<b>%{x}</b><br>Sigma: <b>%{y}σ</b><extra></extra>"))
+                text=[f"{d['sigma']}σ" for d in niv_data],textposition="outside"))
         for y_v,color,lbl in [(6,"#0D9E6E","6σ"),(4,"#1A6FC4","4σ"),(3,"#F59E0B","3σ")]:
             fig_s.add_hline(y=y_v,line_color=color,line_width=1.5,line_dash="dash",
                             annotation_text=lbl,annotation_position="right",annotation_font=dict(color=color,size=11))
@@ -1677,29 +1591,24 @@ with tab_sigma:
             yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="Sigma (σ)",range=[0,11]),
             height=440,margin=dict(l=10,r=130,t=60,b=10),legend=dict(orientation="h",y=1.08,x=0.5,xanchor="center"))
         st.plotly_chart(fig_s,use_container_width=True)
-        st.markdown('<div class="sec-head">Detalle de cálculo</div>',unsafe_allow_html=True)
+        st.markdown('<div class="sec-head">Detalle</div>',unsafe_allow_html=True)
         st.write(pd.DataFrame([{"Analito":d["analito"],"Nivel":d["nivel_label"],"N":d["n"],"Media":d["media"],
             "SD":d["sd"],"CV%":f"{d['cv_pct']}%","Sesgo%":f"{d['sesgo_pct']}%","TEa%":f"{d['tea_pct']}%",
             "Sigma":d["sigma"],"Categoría":d["categoria"]} for d in sigma_data]).to_html(escape=False,index=False),unsafe_allow_html=True)
-        st.markdown('<div class="sec-head">Interpretación clínica</div>',unsafe_allow_html=True)
         for d in sigma_data:
             s=d["sigma"]; lbl=f"**{d['analito']} [{d['nivel_label']}]** — **{s}σ**"
-            if s>=6:   st.success(f"{lbl} clase mundial.")
-            elif s>=4: st.info(f"{lbl} buena calidad.")
-            elif s>=3: st.warning(f"{lbl} aceptable. Aumenta frecuencia de controles.")
-            else:      st.error(f"{lbl} deficiente. Revisar calibración y reactivos.")
+            if s>=6:   st.success(f"{lbl} · clase mundial.")
+            elif s>=4: st.info(f"{lbl} · buena calidad.")
+            elif s>=3: st.warning(f"{lbl} · aceptable.")
+            else:      st.error(f"{lbl} · deficiente. Revisar.")
 
 
 # ── TAB 4: GUÍA BIO-RAD ──────────────────────────────────────
 with tab_biorad:
     st.markdown("### 📋 Guía Bio-Rad de Acciones Correctivas")
-    st.markdown("Base de conocimiento basada en los inserts de **Liquichek** y **Lyphochek**. "
-                "Consulta siempre el insert de tu lote en [myeInserts QCNet](https://myeinserts-app.qcnet.com/home).")
     col_sel1,col_sel2=st.columns([2,1])
-    with col_sel1:
-        an_kb=st.selectbox("Analito a consultar",options=list(BIORAD_KB.keys()),key="kb_analito_sel")
-    with col_sel2:
-        estado_kb=st.selectbox("Simular estado",options=["Rojo (1_3s)","Ámbar (4_1s / 10_x)","Verde (informativo)"],key="kb_estado_sel")
+    with col_sel1: an_kb=st.selectbox("Analito a consultar",options=list(BIORAD_KB.keys()),key="kb_analito_sel")
+    with col_sel2: estado_kb=st.selectbox("Simular estado",options=["Rojo (1_3s)","Ámbar (4_1s / 10_x)","Verde (informativo)"],key="kb_estado_sel")
     estado_sim="Rojo" if "Rojo" in estado_kb else "Ámbar" if "Ámbar" in estado_kb else "Verde"
     regla_sim="1_3s" if estado_sim=="Rojo" else "4_1s" if estado_sim=="Ámbar" else "—"
     st.markdown("<br>",unsafe_allow_html=True)
@@ -1720,9 +1629,9 @@ with tab_biorad:
         if r4s_br:
             hay_alarmas=True
             st.markdown(f"""<div class="biorad-card-red"><b>⚡ R-4s — {an}</b><br>
-                <small>Nivel {r4s_br['label_a']} (Z={r4s_br['z_a']:+.2f}) vs Nivel {r4s_br['label_b']} (Z={r4s_br['z_b']:+.2f})
-                — Diff={r4s_br['diferencia']:.2f}σ<br>Acción: repetir ambos niveles con viales nuevos. No recalibrar.</small>
-            </div>""", unsafe_allow_html=True)
+                <small>{r4s_br['label_a']} (Z={r4s_br['z_a']:+.2f}) vs {r4s_br['label_b']} (Z={r4s_br['z_b']:+.2f})
+                — Diff={r4s_br['diferencia']:.2f}σ — Acción: repetir ambos niveles. No recalibrar.</small></div>""",
+                unsafe_allow_html=True)
     if not hay_alarmas:
         st.success("✅ No hay alarmas activas. ¡El laboratorio opera correctamente!")
     st.markdown("---")
@@ -1736,54 +1645,52 @@ with tab_biorad:
 with tab_chat:
     st.markdown("### 🤖 Asistente AIQC — Powered by Google Gemini")
     modelo_activo=st.session_state.get("gemini_model_active","models/gemini-2.5-flash")
-    st.markdown(f'<div class="gemini-banner">🟢 <b>Google Gemini activo</b> · Modelo: <code>{modelo_activo}</code> · '
-                f'Historial: {MAX_TURNS} turnos · Bio-Rad KB + R-4s + EWMA/CUSUM integrados · Conversación libre habilitada.</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="gemini-banner">🟢 <b>Google Gemini</b> · Modelo: <code>{modelo_activo}</code> · '
+        f'Bio-Rad KB + cobas 8000 + R-4s + EWMA/CUSUM + OpenLab sync · Conversación libre habilitada.</div>',
+        unsafe_allow_html=True)
+
     if "messages" not in st.session_state:
         st.session_state["messages"]=[{"role":"assistant","content":(
-            "¡Hola! Soy el **Asistente AIQC v4.11** 👋\n\n"
-            "Puedo ayudarte con **control de calidad del laboratorio** y también con **cualquier otra cosa** que necesites.\n\n"
-            "Algunos ejemplos de lo que puedes preguntarme:\n"
+            "¡Hola! Soy el **Asistente AIQC v4.12** 👋\n\n"
+            "Tengo acceso a los datos de OpenLab en tiempo real (vía GitHub), "
+            "la base de conocimiento Bio-Rad y el manual del **cobas® 8000**.\n\n"
+            "Puedes preguntarme sobre:\n"
             "- *¿Hay alguna alarma R-4s activa?*\n"
+            "- *¿Cómo proceso la bandeja verde del cobas 8000?*\n"
             "- *¿Qué indica el EWMA del ALT en Patológico Alto?*\n"
-            "- *¿Por qué puede fallar el control de Potasio?*\n"
-            "- *Dame un plan correctivo completo*\n"
-            "- *¿Cuál es la diferencia entre precisión y exactitud?*\n"
-            "- O simplemente... ¡lo que necesites!"
+            "- *¿Por qué puede fallar el módulo ISE?*\n"
+            "- O cualquier otra cosa que necesites 😊"
         )}]
+
     for msg in st.session_state["messages"]:
         with st.chat_message(msg["role"],avatar="🤖" if msg["role"]=="assistant" else "👤"):
             st.markdown(msg["content"])
+
     if prompt := st.chat_input("Escribe tu consulta o pregunta…"):
         st.session_state["messages"].append({"role":"user","content":prompt})
         with st.chat_message("user",avatar="👤"): st.markdown(prompt)
         with st.chat_message("assistant",avatar="🤖"):
-            spinner_txt = (
-                "Analizando datos QC, EWMA/CUSUM, R-4s y Base Bio-Rad…"
-                if _necesita_datos_qc(prompt)
-                else "Pensando…"
-            )
+            spinner_txt="Analizando datos QC, cobas 8000, Bio-Rad KB…" if _necesita_datos_qc(prompt) else "Pensando…"
             with st.spinner(spinner_txt):
                 resp=ia_responde_gemini(prompt,st.session_state["messages"],df_all,analitos_ls,f_min,f_max)
                 st.markdown(resp)
         st.session_state["messages"].append({"role":"assistant","content":resp})
+
     if st.button("🗑️ Nueva conversación",key="clr"):
         st.session_state["messages"]=[st.session_state["messages"][0]]; st.rerun()
 
 
 # ── TAB 6: REGISTRO + CSV + PDF ──────────────────────────────
 with tab_log:
-    col_ttl,col_csv,col_pdf = st.columns([3,1,1])
+    col_ttl,col_csv,col_pdf=st.columns([3,1,1])
     with col_ttl:
         st.markdown("### 📝 Registro de Incidencias y Trazabilidad")
-        st.caption("Acciones persistentes en SQLite · Exporta en CSV o PDF.")
-
-    lab_nombre = st.secrets.get("lab",{}).get("nombre","LAB. CENTRAL")
-
+        st.caption(f"Acciones persistentes en SQLite · Fuente activa: {data_src}")
+    lab_nombre=st.secrets.get("lab",{}).get("nombre","LAB. CENTRAL")
     with col_csv:
         st.markdown("<br>",unsafe_allow_html=True)
-        csv_placeholder = st.empty()
-
+        csv_placeholder=st.empty()
     with col_pdf:
         st.markdown("<br>",unsafe_allow_html=True)
         if st.button("📄 Descargar PDF",use_container_width=True,type="primary"):
@@ -1791,7 +1698,8 @@ with tab_log:
                 try:
                     pdf_bytes=generar_pdf(df_all,analitos_ls,data_src,f_min,f_max,lab_nombre)
                     fname=f"AIQC_Informe_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
-                    st.download_button("⬇️ Guardar PDF",data=pdf_bytes,file_name=fname,mime="application/pdf",use_container_width=True)
+                    st.download_button("⬇️ Guardar PDF",data=pdf_bytes,file_name=fname,
+                                       mime="application/pdf",use_container_width=True)
                     st.success("✅ Informe generado.")
                 except Exception as e: st.error(f"Error: {e}")
 
@@ -1805,14 +1713,15 @@ with tab_log:
             if not sub.empty:
                 sub["_nivel_label"]=NIVELES.get(niv,NIVELES["N"])["label"]; all_log_frames.append(sub)
 
-    df_full_log=pd.concat(all_log_frames) if all_log_frames else pd.DataFrame()
+    df_full_log=pd.concat(all_log_frames,ignore_index=True) if all_log_frames else pd.DataFrame()
     df_log=df_full_log[df_full_log["Estado"]!="Verde"].copy().reset_index(drop=True) if not df_full_log.empty else pd.DataFrame()
 
     if df_log.empty:
         st.success("✅ Sin violaciones en el período seleccionado.")
         with csv_placeholder:
-            st.download_button("⬇️ Exportar CSV",data=b"Sin violaciones",file_name="AIQC_sin_incidencias.csv",
-                               mime="text/csv",use_container_width=True,disabled=True)
+            st.download_button("⬇️ Exportar CSV",data=b"Sin violaciones",
+                               file_name="AIQC_sin_incidencias.csv",mime="text/csv",
+                               use_container_width=True,disabled=True)
     else:
         acciones_db=load_acciones(db_con)
         hcols=st.columns([1.4,2.0,1.4,1.1,1.2,1.3,1.4,1.4,1.3])
