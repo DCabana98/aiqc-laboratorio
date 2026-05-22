@@ -1409,9 +1409,9 @@ st.markdown(f"""
 # ==============================================================
 #  17. TABS
 # ==============================================================
-tab_dash,tab_ewma,tab_sigma,tab_biorad,tab_chat,tab_log = st.tabs([
+tab_dash,tab_ewma,tab_sigma,tab_biorad,tab_chat,tab_log,tab_cfg = st.tabs([
     "📊  Dashboard","📉  EWMA/CUSUM","📈  Sigma Metrics",
-    "📋  Guía Bio-Rad","🤖  Asistente IA","📝  Registro",
+    "📋  Guía Bio-Rad","🤖  Asistente IA","📝  Registro","⚙️  Configuración",
 ])
 
 
@@ -1771,3 +1771,168 @@ with tab_log:
 
         if hechas==total: st.success("🎉 Trazabilidad completa.")
         elif pend: st.warning(f"⚠️ {pend} violación(es) pendiente(s).")
+
+
+# ── TAB 7: CONFIGURACIÓN ─────────────────────────────────────
+with tab_cfg:
+    st.markdown("### ⚙️ Configuración del laboratorio")
+    st.caption("Introduce aquí los valores objetivo de tus controles y el lote activo. "
+               "Se guardan en la sesión y se aplican automáticamente a los datos cargados desde OpenLab.")
+
+    # ----------------------------------------------------------
+    #  Inicializar configuración en session_state si no existe
+    # ----------------------------------------------------------
+    if "cfg_analitos" not in st.session_state:
+        st.session_state["cfg_analitos"] = {}
+    if "cfg_lote" not in st.session_state:
+        st.session_state["cfg_lote"] = "LOT-2025"
+    if "cfg_github_token" not in st.session_state:
+        st.session_state["cfg_github_token"] = ""
+
+    # ----------------------------------------------------------
+    #  SECCIÓN 1: Lote activo
+    # ----------------------------------------------------------
+    st.markdown('<div class="sec-head">🏷️ Lote de reactivos activo</div>', unsafe_allow_html=True)
+    col_lote1, col_lote2 = st.columns([2, 3])
+    with col_lote1:
+        lote_input = st.text_input(
+            "Número de lote",
+            value=st.session_state["cfg_lote"],
+            placeholder="Ej: LOT-2025-A",
+            help="Este lote se asignará a todos los registros en el dashboard y en el PDF."
+        )
+        if st.button("💾 Guardar lote", type="primary", key="btn_lote"):
+            st.session_state["cfg_lote"] = lote_input.strip()
+            # Actualizar lote en los datos cargados
+            if st.session_state.get("df_github") is not None:
+                st.session_state["df_github"]["Lote"] = lote_input.strip()
+            if st.session_state.get("df_manual") is not None:
+                st.session_state["df_manual"]["Lote"] = lote_input.strip()
+            st.success(f"✅ Lote guardado: **{lote_input.strip()}**")
+
+    # ----------------------------------------------------------
+    #  SECCIÓN 2: Valores objetivo por analito y nivel
+    # ----------------------------------------------------------
+    st.markdown('<div class="sec-head">🎯 Valores objetivo (Media y SD)</div>', unsafe_allow_html=True)
+    st.info("Introduce los valores objetivo de tu laboratorio para cada analito y nivel. "
+            "Se aplicarán automáticamente al calcular Z-Score, Westgard y Sigma.", icon="ℹ️")
+
+    # Obtener analitos disponibles en los datos actuales
+    analitos_cfg = sorted(df_all["Analito"].unique()) if not df_all.empty else ["Amilasa"]
+    niveles_cfg  = ["N", "PB", "PA"]
+    nivel_nombres = {"N": "Normal", "PB": "Patológico Bajo", "PA": "Patológico Alto"}
+
+    cfg_actualizada = {}
+
+    for an in analitos_cfg:
+        st.markdown(f"#### 🔬 {an}")
+        cols_niv = st.columns(3)
+
+        for col, niv in zip(cols_niv, niveles_cfg):
+            with col:
+                # Recuperar valores guardados previamente
+                saved = st.session_state["cfg_analitos"].get(f"{an}_{niv}", {})
+                media_saved = saved.get("media", 0.0)
+                sd_saved    = saved.get("sd",    0.0)
+
+                # Si hay datos cargados, usar como sugerencia si no hay valor guardado
+                sub_datos = df_all[(df_all["Analito"]==an) & (df_all["Nivel"]==niv)]
+                if not sub_datos.empty and media_saved == 0.0:
+                    media_saved = float(sub_datos["Media_Objetivo"].iloc[0])
+                    sd_saved    = float(sub_datos["SD_Objetivo"].iloc[0])
+
+                st.markdown(f"**{nivel_nombres[niv]}**")
+                media_v = st.number_input(
+                    f"Media ({niv})", min_value=0.0, value=float(media_saved),
+                    step=0.01, format="%.4f", key=f"media_{an}_{niv}"
+                )
+                sd_v = st.number_input(
+                    f"SD ({niv})", min_value=0.0, value=float(sd_saved),
+                    step=0.001, format="%.4f", key=f"sd_{an}_{niv}"
+                )
+                cfg_actualizada[f"{an}_{niv}"] = {"media": media_v, "sd": sd_v}
+
+        st.markdown("---")
+
+    if st.button("💾 Guardar valores objetivo", type="primary", key="btn_cfg_analitos"):
+        st.session_state["cfg_analitos"] = cfg_actualizada
+
+        # Aplicar los nuevos valores a los datos cargados
+        for fuente_key in ["df_github", "df_manual"]:
+            df_f = st.session_state.get(fuente_key)
+            if df_f is None:
+                continue
+            for an in analitos_cfg:
+                for niv in niveles_cfg:
+                    vals = cfg_actualizada.get(f"{an}_{niv}", {})
+                    media_n = vals.get("media", 0.0)
+                    sd_n    = vals.get("sd",    0.0)
+                    if media_n > 0 and sd_n > 0:
+                        mask = (df_f["Analito"]==an) & (df_f["Nivel"]==niv)
+                        df_f.loc[mask, "Media_Objetivo"] = media_n
+                        df_f.loc[mask, "SD_Objetivo"]    = sd_n
+            st.session_state[fuente_key] = df_f
+
+        st.success("✅ Valores objetivo guardados y aplicados a los datos actuales.")
+        st.rerun()
+
+    # ----------------------------------------------------------
+    #  SECCIÓN 3: Token GitHub (alternativa a secrets.toml)
+    # ----------------------------------------------------------
+    st.markdown('<div class="sec-head">☁️ Conexión GitHub / OpenLab</div>', unsafe_allow_html=True)
+    st.caption("Si no puedes editar el secrets.toml, puedes introducir el token aquí. "
+               "Solo se guarda en la sesión actual (se borra al cerrar el navegador).")
+
+    col_gh1, col_gh2 = st.columns([2, 1])
+    with col_gh1:
+        token_input = st.text_input(
+            "Token de GitHub",
+            value=st.session_state.get("cfg_github_token", ""),
+            type="password",
+            placeholder="ghp_...",
+            help="Token con permisos de lectura en tu repositorio."
+        )
+    with col_gh2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("💾 Guardar token", key="btn_token"):
+            st.session_state["cfg_github_token"] = token_input.strip()
+            st.success("✅ Token guardado en sesión.")
+
+    # Estado actual de la conexión GitHub
+    cfg_gh   = st.secrets.get("github", {})
+    tiene_gh = bool(cfg_gh.get("usuario") and cfg_gh.get("repo"))
+    ultima_s = st.session_state.get("github_last_sync")
+
+    st.markdown('<div class="sec-head">📊 Estado de la sincronización</div>', unsafe_allow_html=True)
+    col_s1, col_s2, col_s3 = st.columns(3)
+    with col_s1:
+        st.metric("Fuente activa", data_src.replace("☁️ ","").replace("🔬 ","").replace("📄 ",""))
+    with col_s2:
+        st.metric("Última sync", ultima_s.strftime("%d/%m %H:%M") if ultima_s else "—")
+    with col_s3:
+        total_reg = len(df_all) if not df_all.empty else 0
+        st.metric("Registros cargados", total_reg)
+
+    if st.button("🔄 Sincronizar ahora desde GitHub", use_container_width=True,
+                 type="primary", key="btn_sync_cfg", disabled=not tiene_gh):
+        with st.spinner("Conectando con GitHub…"):
+            df_gh, msg = leer_csv_github()
+            if df_gh is not None:
+                # Aplicar configuración guardada a los nuevos datos
+                cfg_actual = st.session_state.get("cfg_analitos", {})
+                lote_actual = st.session_state.get("cfg_lote", "LOT-2025")
+                for an in df_gh["Analito"].unique():
+                    for niv in df_gh["Nivel"].unique():
+                        vals = cfg_actual.get(f"{an}_{niv}", {})
+                        if vals.get("media", 0) > 0 and vals.get("sd", 0) > 0:
+                            mask = (df_gh["Analito"]==an) & (df_gh["Nivel"]==niv)
+                            df_gh.loc[mask, "Media_Objetivo"] = vals["media"]
+                            df_gh.loc[mask, "SD_Objetivo"]    = vals["sd"]
+                df_gh["Lote"] = lote_actual
+                st.session_state["df_github"]        = df_gh
+                st.session_state["data_src_github"]  = msg
+                st.session_state["github_last_sync"] = datetime.now()
+                st.success(msg)
+                st.rerun()
+            else:
+                st.error(msg)
