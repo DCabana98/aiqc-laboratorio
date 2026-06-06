@@ -60,7 +60,7 @@ GITHUB_USUARIO = "aiqc"
 GITHUB_REPO    = "aiqc"
 GITHUB_RAMA    = "main"
 GITHUB_ARCHIVO = "data/controles_qc.csv"
-GITHUB_TOKEN   = "ghp_TU_TOKEN_AQUI"    # ← pon aquí tu token
+GITHUB_TOKEN   = "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"    # ← pon aquí tu token
 
 # Intervalo de sincronización automática en minutos
 INTERVALO_MINUTOS = 60
