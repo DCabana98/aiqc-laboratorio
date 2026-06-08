@@ -22,8 +22,13 @@ logging.basicConfig(level=logging.INFO,
     handlers=[logging.StreamHandler()])
 logger = logging.getLogger("AIQC")
 
-st.set_page_config(page_title="AIQC – Quality Control", page_icon="🔬",
-    layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="AIQC – Quality Control",
+    page_icon="🔬",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={"Get help":None,"Report a bug":None,"About":"AIQC v4.13 · Control de Calidad"}
+)
 
 # ==============================================================
 #  ESTILOS
@@ -88,9 +93,11 @@ html,body,[data-testid="stAppViewContainer"],[data-testid="stAppViewBlockContain
 .nivel-PB{background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;}
 .nivel-PA{background:#FFF1F2;color:#9F1239;border:1px solid #FECDD3;}
 .aiqc-header{background:linear-gradient(135deg,#1A6FC4 0%,#0D9E6E 100%);
-    border-radius:16px;padding:22px 28px;margin-bottom:24px;box-shadow:0 4px 20px rgba(26,111,196,.22);}
+    border-radius:16px;padding:22px 28px;margin-bottom:12px;box-shadow:0 4px 20px rgba(26,111,196,.22);}
 .aiqc-header h2{color:#FFFFFF!important;margin:0 0 4px;font-size:1.5rem;font-weight:800;}
 .aiqc-header .meta{color:rgba(255,255,255,.82);font-size:.875rem;}
+.quick-bar{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;
+    padding:10px 16px;margin-bottom:16px;box-shadow:0 1px 6px rgba(0,0,0,.05);}
 .sb-logo{text-align:center;font-size:2.8rem;margin-bottom:2px;}
 .sb-title{text-align:center;font-size:1.2rem;font-weight:800;
     background:linear-gradient(135deg,#60A5FA,#34D399);-webkit-background-clip:text;
@@ -265,7 +272,7 @@ BIORAD_KB = {
         "interferencias":"EDTA (--- critico), magnesio elevado (+ leve), hemólisis (+ leve)",
         "referencia":"Liquichek Chemistry Control Insert · Bio-Rad · CLSI EP7-A2"},
     "Amilasa":{"producto":"Liquichek Chemistry Control","grupo":"Bioquímica básica",
-        "causas_comunes":["Temperatura de incubación incorrecta (método cinético muy sensible a T)","Degradación del substrato (4-nitrofenil-maltoheptaósido) por luz o calor","Calibración desactualizada o calibrador no trazable","Inhibición por EDTA si la muestra es plasma con anticoagulante","Contaminación cruzada con saliva (amilasa salivar es muy elevada)"],
+        "causas_comunes":["Temperatura de incubación incorrecta (método cinético muy sensible a T)","Degradación del substrato por luz o calor","Calibración desactualizada o calibrador no trazable","Inhibición por EDTA si la muestra es plasma","Contaminación cruzada con saliva"],
         "acciones_1_3s":["No liberar resultados de pacientes hasta resolver la alarma","Repetir con NUEVO vial del mismo lote","Si persiste: repetir con vial de LOTE DIFERENTE","Verificar temperatura del módulo fotométrico (37,0 oC +/- 0,1 oC)","Recalibrar con estándar trazable","Documentar acción y responsable"],
         "acciones_warn":["Monitoreo estrecho durante 3 días","Revisar tendencia en Levey-Jennings","Verificar temperatura del baño","Comprobar absorbancia del blanco (<1.5 AU)"],
         "causas_deriva":["Deterioro del substrato (sensible a temperatura y luz)","Deriva del calibrador","Cambio de lote sin ajuste de valores objetivo"],
@@ -492,47 +499,34 @@ rol_actual     = usuario_sesion["rol"]
 
 
 # ==============================================================
-#  DATOS DEMO — con Amilasa real y alarmas visibles
+#  DATOS DEMO
 # ==============================================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def build_demo():
     np.random.seed(42)
     today = pd.Timestamp.now().replace(hour=0,minute=0,second=0,microsecond=0)
     dates = [today - timedelta(days=29-i) for i in range(30)]
-
     DEMO = {
         "Amilasa": {
-            "N":  {"media":50.0,"sd":2.0,
-                   "patron":[0]*20+[0.4,0.7,1.0,1.2,1.5,1.8,2.1,2.4,2.7,3.1]},
-            "PB": {"media":25.0,"sd":1.5,
-                   "patron":[0]*27+[-2.2,-2.5,-2.8]},
-            "PA": {"media":150.0,"sd":6.0,
-                   "patron":[0]*25+[1.1,1.3,1.5,1.8,2.2]},
+            "N":  {"media":50.0,"sd":2.0,"patron":[0]*20+[0.4,0.7,1.0,1.2,1.5,1.8,2.1,2.4,2.7,3.1]},
+            "PB": {"media":25.0,"sd":1.5,"patron":[0]*27+[-2.2,-2.5,-2.8]},
+            "PA": {"media":150.0,"sd":6.0,"patron":[0]*25+[1.1,1.3,1.5,1.8,2.2]},
         },
         "ALT (Transaminasa)": {
             "N":  {"media":35.0,"sd":2.5,"patron":[0]*30},
-            "PB": {"media":12.0,"sd":1.5,
-                   "patron":[0]*26+[1.2,-1.3,1.4,-1.5]},
+            "PB": {"media":12.0,"sd":1.5,"patron":[0]*26+[1.2,-1.3,1.4,-1.5]},
             "PA": {"media":120.0,"sd":8.0,"patron":[0]*30},
         },
     }
-
     rows = []
     for analito, niveles in DEMO.items():
         for nivel_cod, cfg in niveles.items():
-            media  = cfg["media"]; sd = cfg["sd"]; patron = cfg["patron"]
+            media=cfg["media"]; sd=cfg["sd"]; patron=cfg["patron"]
             for i, d in enumerate(dates):
-                drift = patron[i] * sd
-                ruido = np.random.normal(0, sd*0.6)
-                rows.append({
-                    "Fecha":          d,
-                    "Analito":        analito,
-                    "Nivel":          nivel_cod,
-                    "Valor":          round(media+drift+ruido, 3),
-                    "Media_Objetivo": media,
-                    "SD_Objetivo":    sd,
-                    "Lote":           "LOT-DEMO-2025",
-                })
+                drift=patron[i]*sd; ruido=np.random.normal(0,sd*0.6)
+                rows.append({"Fecha":d,"Analito":analito,"Nivel":nivel_cod,
+                              "Valor":round(media+drift+ruido,3),"Media_Objetivo":media,
+                              "SD_Objetivo":sd,"Lote":"LOT-DEMO-2025"})
     return pd.DataFrame(rows)
 
 
@@ -548,7 +542,6 @@ COL_SYNONYMS = {
     "SD_Objetivo":["sd_objetivo","sd","desviacion","std","sigma","desvest"],
     "Lote":["lote","lot","batch","lote_reactivo","reactivo"],
 }
-
 def _norm(s):
     return s.lower().strip().translate(str.maketrans("áéíóúàèìòùäëïöüÁÉÍÓÚ","aeiouaeiouaeiouAEIOU"))
 
@@ -593,8 +586,7 @@ def leer_csv_github():
     try:
         cfg=st.secrets.get("github",{}); usuario=cfg.get("usuario",""); repo=cfg.get("repo","")
         rama=cfg.get("rama","main"); archivo=cfg.get("archivo","data/controles_qc.csv"); token=cfg.get("token","")
-        if not all([usuario,repo,archivo]):
-            return None,"Faltan datos en secrets.toml — sección [github]."
+        if not all([usuario,repo,archivo]): return None,"Faltan datos en secrets.toml — sección [github]."
         url=f"https://api.github.com/repos/{usuario}/{repo}/contents/{archivo}?ref={rama}"
         headers={"Accept":"application/vnd.github.raw+json"}
         if token: headers["Authorization"]=f"Bearer {token}"
@@ -609,10 +601,8 @@ def leer_csv_github():
         if df is None: return None,f"CSV descargado pero formato incorrecto: {err}"
         ts=datetime.now().strftime("%d/%m/%Y %H:%M")
         return df,f"✅ {len(df)} filas · {df['Analito'].nunique()} analito(s) · sync {ts}"
-    except requests.exceptions.ConnectionError:
-        return None,"Sin conexión a internet."
-    except Exception as e:
-        return None,f"Error inesperado: {str(e)[:200]}"
+    except requests.exceptions.ConnectionError: return None,"Sin conexión a internet."
+    except Exception as e: return None,f"Error inesperado: {str(e)[:200]}"
 
 def _auto_refresh_github():
     cfg_gh=st.secrets.get("github",{})
@@ -1101,7 +1091,6 @@ def ia_responde_gemini(pregunta,historial,df_all,analitos_ls,f_min,f_max):
     if not api_key: return "❌ **API Key de Gemini no configurada.**"
     genai.configure(api_key=api_key)
     niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
-
     if _necesita_datos_qc(pregunta):
         resumen=[]
         for an in analitos_ls:
@@ -1130,7 +1119,6 @@ def ia_responde_gemini(pregunta,historial,df_all,analitos_ls,f_min,f_max):
                   f"=== REGLAS WESTGARD ===\n{REGLAS_DESC}\n\n=== PREGUNTA ===\n{pregunta}")
     else:
         contexto=f"=== PREGUNTA ===\n{pregunta}"
-
     recent=historial[1:][-MAX_TURNS*2:]
     gemini_hist=[{"role":"user" if m["role"]=="user" else "model","parts":[m["content"]]} for m in recent]
     last_error=""
@@ -1155,13 +1143,11 @@ with st.sidebar:
     st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-sub">Quality Control · v4.13 · OpenLab + cobas 8000</div>', unsafe_allow_html=True)
-
     rol_badge_css={"admin":"role-admin","supervisor":"role-supervisor","tecnico":"role-tecnico"}.get(rol_actual,"role-tecnico")
     st.markdown(f'<div style="text-align:center;margin-bottom:12px">'
                 f'<span style="color:#94A3B8;font-size:.78rem">👤 {usuario_sesion.get("nombre","") or usuario_actual}</span>'
                 f'&nbsp;<span class="{rol_badge_css}">{rol_actual.upper()}</span></div>',unsafe_allow_html=True)
     st.markdown("---")
-
     st.markdown("**📂 Fuente de datos**")
     tab_src1,tab_src2=st.tabs(["📤 Subir archivo","☁️ GitHub / OpenLab"])
 
@@ -1279,21 +1265,21 @@ ultima=df_series.iloc[-1] if not df_series.empty else None
 analitos_ls=sorted(df_all["Analito"].unique())
 ESTADO_CLS={"Verde":"estado-verde","Ámbar":"estado-ambar","Rojo":"estado-rojo"}
 r4s_result=evaluar_r4s(df_all,analito,f_min,f_max)
+estado_actual=ultima["Estado"] if ultima is not None else "Verde"
 
 
 # ==============================================================
 #  CABECERA
 # ==============================================================
-estado_actual=ultima["Estado"] if ultima is not None else "Verde"
 st.markdown(f"""
 <div class="aiqc-header">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
     <div>
       <h2>🔬 AIQC – Control de Calidad</h2>
       <div class="meta">
-        <b>Analito:</b> {analito} &nbsp;·&nbsp; {nivel_badge(nivel_activo)} &nbsp;·&nbsp;
+        <b>Fuente:</b> {data_src} &nbsp;·&nbsp;
         <b>Período:</b> {f_min.strftime('%d/%m/%Y')} → {f_max.strftime('%d/%m/%Y')}
-        &nbsp;·&nbsp; <b>Fuente:</b> {data_src}
+        &nbsp;·&nbsp; <b>Usuario:</b> {usuario_actual}
       </div>
     </div>
     <div style="font-size:1.1rem">{estado_badge(estado_actual)}</div>
@@ -1301,7 +1287,48 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Banner demo en área principal
+# ==============================================================
+#  BARRA DE CONTROLES RÁPIDOS
+#  Siempre visible aunque el sidebar esté cerrado
+# ==============================================================
+st.markdown('<div class="quick-bar">', unsafe_allow_html=True)
+qc1,qc2,qc3,qc4,qc5=st.columns([2,1.5,1.5,1.5,1.5])
+with qc1:
+    analito_q=st.selectbox("Analito",options=sorted(df_all["Analito"].unique()),
+        index=sorted(df_all["Analito"].unique()).index(analito),
+        key="q_analito",label_visibility="collapsed")
+    if analito_q!=analito:
+        st.session_state["sel_analito"]=analito_q; st.rerun()
+with qc2:
+    niveles_q=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
+    labels_q=[NIVELES.get(n,NIVELES["N"])["label"] for n in niveles_q]
+    label_actual=NIVELES.get(nivel_activo,NIVELES["N"])["label"]
+    idx_q=labels_q.index(label_actual) if label_actual in labels_q else 0
+    nivel_q=st.selectbox("Nivel",options=labels_q,index=idx_q,
+        key="q_nivel",label_visibility="collapsed")
+    nivel_cod_q={NIVELES.get(n,NIVELES["N"])["label"]:n for n in niveles_q}.get(nivel_q,"N")
+    if nivel_cod_q!=nivel_activo:
+        st.session_state["sel_nivel"]=nivel_q; st.rerun()
+with qc3:
+    fmin_q=st.date_input("Desde",value=f_min,
+        min_value=pd.Timestamp(fechas_d[0]).date() if fechas_d else None,
+        max_value=pd.Timestamp(fechas_d[-1]).date() if fechas_d else None,
+        key="q_f1",label_visibility="collapsed")
+    if fmin_q!=f_min:
+        st.session_state["f1"]=fmin_q; st.rerun()
+with qc4:
+    fmax_q=st.date_input("Hasta",value=f_max,
+        min_value=pd.Timestamp(fechas_d[0]).date() if fechas_d else None,
+        max_value=pd.Timestamp(fechas_d[-1]).date() if fechas_d else None,
+        key="q_f2",label_visibility="collapsed")
+    if fmax_q!=f_max:
+        st.session_state["f2"]=fmax_q; st.rerun()
+with qc5:
+    st.markdown(f'<div style="padding-top:6px;text-align:center">{nivel_badge(nivel_activo)}</div>',
+                unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Banner demo
 if data_src=="🔬 Modo Demo":
     st.markdown("""
     <div style="background:linear-gradient(135deg,#EFF6FF,#ECFDF5);
@@ -1561,7 +1588,6 @@ with tab_chat:
     st.markdown(f'<div class="gemini-banner">🟢 <b>Google Gemini</b> · Modelo: <code>{modelo_activo}</code> · '
                 f'Bio-Rad KB + cobas 8000 + R-4s + EWMA/CUSUM + OpenLab sync · Conversación libre habilitada.</div>',
                 unsafe_allow_html=True)
-
     if "messages" not in st.session_state:
         st.session_state["messages"]=[{"role":"assistant","content":(
             "¡Hola! Soy el **Asistente AIQC v4.13** 👋\n\n"
@@ -1574,11 +1600,9 @@ with tab_chat:
             "- *Dame un plan correctivo para la alarma R-4s*\n"
             "- O cualquier otra consulta 😊"
         )}]
-
     for msg in st.session_state["messages"]:
         with st.chat_message(msg["role"],avatar="🤖" if msg["role"]=="assistant" else "👤"):
             st.markdown(msg["content"])
-
     if prompt:=st.chat_input("Escribe tu consulta o pregunta…"):
         st.session_state["messages"].append({"role":"user","content":prompt})
         with st.chat_message("user",avatar="👤"): st.markdown(prompt)
@@ -1589,7 +1613,6 @@ with tab_chat:
                 st.markdown(resp)
         st.session_state["messages"].append({"role":"assistant","content":resp})
         registrar_auditoria(db_con,usuario_actual,"CHAT_QUERY",prompt[:120])
-
     if st.button("🗑️ Nueva conversación",key="clr"):
         st.session_state["messages"]=[st.session_state["messages"][0]]; st.rerun()
 
@@ -1749,7 +1772,7 @@ with tab_usuarios:
 
         st.markdown("---")
         st.markdown('<div class="sec-head">Registro de auditoría</div>',unsafe_allow_html=True)
-        col_aud1,col_aud2=st.columns([3,1])
+        _,col_aud2=st.columns([3,1])
         with col_aud2:
             n_registros=st.number_input("Mostrar últimos",min_value=10,max_value=500,value=50,step=10,key="aud_n")
         audit_rows=db_con.execute("SELECT ts,usuario,accion,detalle FROM auditoria ORDER BY id DESC LIMIT ?",(int(n_registros),)).fetchall()
@@ -1776,7 +1799,7 @@ with tab_cfg:
     if "cfg_lote"     not in st.session_state: st.session_state["cfg_lote"]="LOT-2025"
 
     st.markdown('<div class="sec-head">🏷️ Lote de reactivos activo</div>',unsafe_allow_html=True)
-    col_lote1,col_lote2=st.columns([2,3])
+    col_lote1,_=st.columns([2,3])
     with col_lote1:
         lote_input=st.text_input("Número de lote",value=st.session_state["cfg_lote"],placeholder="Ej: LOT-2025-A")
         if st.button("💾 Guardar lote",type="primary",key="btn_lote"):
