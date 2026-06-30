@@ -16,6 +16,9 @@ ENV/
 .streamlit/secrets.toml
 .token
 
+# ── Agente de sincronización (scripts/sync_openlab.py) ───────
+sync_log.txt
+
 # ── Base de datos local AIQC ─────────────────────────────────
 *.db
 *.db-wal

@@ -76,6 +76,13 @@ Punto de entrada `app.py` (raíz). Toda la lógica vive en el paquete `aiqc/`:
 | `aiqc/reports.py`      | Exportación `generar_csv` y `generar_pdf`. |
 | `aiqc/ai_assistant.py` | Asistente Gemini: `ia_responde_gemini`, `necesita_datos_qc`. |
 
+Fuera del paquete, `scripts/sync_openlab.py` es el **agente de subida** que corre
+**en el laboratorio**: lee los TXT que exporta OpenLab, los normaliza al contrato
+de datos y los sube a GitHub (el espejo de escritura de `leer_csv_github`). No es
+lógica de la app ni se importa desde `aiqc/`; corre como proceso autónomo. El
+token sale de `GITHUB_TOKEN` o de `[github].token` — **nunca** hardcodeado. Sus
+dependencias están en `scripts/requirements-sync.txt` (aparte de la app).
+
 ### Reglas de dependencia entre módulos
 
 El grafo de imports es **acíclico**; respétalo al añadir código:

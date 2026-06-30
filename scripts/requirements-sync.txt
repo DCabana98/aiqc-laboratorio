@@ -1,0 +1,6 @@
+# Dependencias del agente de subida scripts/sync_openlab.py.
+# Se instala en el PC del laboratorio, NO en el entorno de la app.
+requests>=2.31
+pandas>=2.0
+# Solo en Python 3.10 o anterior (3.11+ trae tomllib en la stdlib):
+tomli>=2.0 ; python_version < "3.11"

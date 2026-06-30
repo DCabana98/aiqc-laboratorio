@@ -43,6 +43,11 @@ informes PDF/CSV y un asistente conversacional con **Google Gemini**.
 │   └── ai_assistant.py          # Asistente Google Gemini
 ├── data/
 │   └── controles_qc.example.csv # CSV de ejemplo (formato OpenLab)
+├── scripts/                     # Utilidades operativas (fuera de la app)
+│   ├── sync_openlab.py          # Agente lab: OpenLab (TXT) → GitHub (CSV)
+│   └── requirements-sync.txt    # Dependencias del agente de subida
+├── .devcontainer/
+│   └── devcontainer.json        # Entorno reproducible (Codespaces / VS Code)
 ├── .streamlit/
 │   └── secrets.toml.example     # Plantilla de secretos
 ├── .github/workflows/ci.yml     # CI: formato (black), sintaxis e import
@@ -102,6 +107,36 @@ primera vez que se inicializa la base de datos.
 > El `requirements.txt` se instala automáticamente. `kaleido` permite exportar
 > los gráficos Levey-Jennings al PDF; si no está disponible, el PDF se genera
 > igualmente sin las imágenes.
+
+---
+
+## 🔄 Sincronización con OpenLab (`scripts/sync_openlab.py`)
+
+La app **solo lee** el CSV desde GitHub; quien lo **mantiene actualizado** es un
+agente que corre **en el laboratorio** (donde está OpenLab), no en la nube:
+
+```
+OpenLab (Agilent) ──export TXT──▶ carpeta local ──sync_openlab.py──▶ GitHub (CSV) ──▶ app AIQC
+```
+
+`scripts/sync_openlab.py` lee los TXT que OpenLab exporta a una carpeta, los
+normaliza al [formato de datos QC](#-formato-de-datos-qc) y sube el CSV
+combinado a GitHub vía su API, repitiéndolo cada `INTERVALO_MINUTOS`.
+
+```bash
+pip install -r scripts/requirements-sync.txt
+export GITHUB_TOKEN=ghp_xxx            # Windows: set GITHUB_TOKEN=ghp_xxx
+python scripts/sync_openlab.py --once  # una pasada; sin --once corre en bucle
+```
+
+- **El token nunca va en el código.** Se lee de la variable de entorno
+  `GITHUB_TOKEN` o de `[github].token` en `secrets.toml`. El destino
+  (`usuario`/`repo`/`rama`/`archivo`) sale de la misma sección `[github]`.
+- Ajusta la carpeta de export y los analitos con variables de entorno
+  (`AIQC_CARPETA_QC`, `AIQC_LOTE`, `AIQC_INTERVALO_MIN`) o editando las
+  constantes al inicio del script.
+- En Windows, prográmalo con el **Programador de tareas**; en Linux, con `cron`
+  o un servicio `systemd`.
 
 ---
 
