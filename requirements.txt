@@ -1,0 +1,10 @@
+streamlit
+plotly
+pandas
+numpy
+fpdf2
+openpyxl
+google-generativeai
+kaleido
+requests
+bcrypt

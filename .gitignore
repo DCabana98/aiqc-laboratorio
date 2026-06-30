@@ -1,0 +1,38 @@
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# ── Streamlit / secretos ─────────────────────────────────────
+.streamlit/secrets.toml
+.token
+
+# ── Base de datos local AIQC ─────────────────────────────────
+*.db
+*.db-wal
+*.db-shm
+.aiqc/
+
+# ── Informes / temporales ────────────────────────────────────
+/tmp/lj_*.png
+*.pdf
+!docs/**/*.pdf
+
+# ── Herramientas / IDE / OS ──────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.idea/
+.vscode/
+.DS_Store

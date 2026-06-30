@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Formato (black)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar black
+        run: |
+          python -m pip install --upgrade pip
+          pip install black==25.11.0
+
+      - name: Comprobar formato
+        run: black --check --diff app.py aiqc/
+
+  build:
+    name: Sintaxis e import
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Comprobar sintaxis (py_compile)
+        run: python -m py_compile app.py aiqc/*.py
+
+      - name: Comprobar que el paquete importa
+        run: python -c "import aiqc, aiqc.knowledge_base, aiqc.qc_rules; print('aiqc', aiqc.__version__)"

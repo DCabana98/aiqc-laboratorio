@@ -1,0 +1,3 @@
+# Dependencias de desarrollo (no necesarias para ejecutar la app).
+-r requirements.txt
+black==25.11.0
