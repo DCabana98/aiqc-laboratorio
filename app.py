@@ -1,25 +1,61 @@
 # ==============================================================
-#  AIQC – Artificial Intelligence for Quality Control
-#  Versión: 4.13 – Demo mejorada + OpenLab + cobas 8000
-#  Deploy:  streamlit run app.py
-#  Deps:    pip install streamlit plotly pandas numpy fpdf2
-#           openpyxl google-generativeai kaleido requests bcrypt
+# AIQC – Artificial Intelligence for Quality Control
+# Versión: 4.13 – Demo mejorada + OpenLab + cobas 8000
+# Deploy: streamlit run app.py
+# Deps: pip install streamlit plotly pandas numpy fpdf2
+#       openpyxl google-generativeai kaleido requests bcrypt
 # ==============================================================
+import logging
 
-import os, sqlite3, io, logging
-import bcrypt
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import requests
-from datetime import datetime, timedelta
-from fpdf import FPDF
-import google.generativeai as genai
+from datetime import datetime
 
-logging.basicConfig(level=logging.INFO,
+from aiqc.config import get_section
+from aiqc.styles import CSS
+from aiqc.knowledge_base import (
+    NIVELES,
+    BIORAD_KB,
+    GRUPOS_ANALITICOS,
+    TEA_CLIA,
+    TEA_DEFAULT,
+    nivel_badge,
+)
+from aiqc.database import (
+    init_db,
+    render_login,
+    registrar_auditoria,
+    tiene_permiso,
+    load_acciones,
+    save_accion,
+    hash_password,
+)
+from aiqc.data_io import build_demo, leer_archivo, leer_csv_github, auto_refresh_github
+from aiqc.qc_rules import (
+    evaluar_westgard,
+    evaluar_r4s,
+    calcular_ewma,
+    calcular_cusum,
+    calcular_sigma,
+)
+from aiqc.charts import (
+    estado_badge,
+    render_kb_panel,
+    render_r4s_alert,
+    build_lj_figure,
+    build_ewma_figure,
+    build_cusum_figure,
+)
+from aiqc.reports import generar_csv, generar_pdf
+from aiqc.ai_assistant import necesita_datos_qc, ia_responde_gemini
+
+logging.basicConfig(
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()])
+    handlers=[logging.StreamHandler()],
+)
 logger = logging.getLogger("AIQC")
 
 st.set_page_config(
@@ -27,1388 +63,426 @@ st.set_page_config(
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded",
-    menu_items={"Get help":None,"Report a bug":None,"About":"AIQC v4.13 · Control de Calidad"}
+    menu_items={"Get help": None, "Report a bug": None, "About": "AIQC v4.13 · Control de Calidad"},
 )
 
 # ==============================================================
-#  ESTILOS
+# ESTILOS
 # ==============================================================
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-html,body,[data-testid="stAppViewContainer"],[data-testid="stAppViewBlockContainer"]{
-    background-color:#F4F6F9!important;color:#1C2B3A;font-family:'Inter','Segoe UI',sans-serif;}
-#MainMenu,footer,header,[data-testid="stToolbar"],[data-testid="stDecoration"]{display:none!important;}
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#1E2D40 0%,#16202E 100%)!important;
-    border-right:none!important;box-shadow:4px 0 24px rgba(0,0,0,.18);}
-[data-testid="stSidebar"] *{color:#CBD5E1!important;}
-[data-testid="stSidebar"] strong,[data-testid="stSidebar"] b{color:#E2E8F0!important;}
-[data-testid="stSidebar"] hr{border-color:rgba(255,255,255,.10)!important;}
-[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]{
-    background:rgba(255,255,255,.05)!important;
-    border:1.5px dashed rgba(255,255,255,.20)!important;border-radius:10px!important;}
-[data-testid="stSidebar"] [data-baseweb="select"]>div{
-    background:rgba(255,255,255,.08)!important;border:1px solid rgba(255,255,255,.15)!important;
-    border-radius:8px!important;color:#E2E8F0!important;}
-[data-testid="stSidebar"] [data-testid="stDateInput"] input{
-    background:rgba(255,255,255,.08)!important;border:1px solid rgba(255,255,255,.15)!important;
-    border-radius:8px!important;color:#E2E8F0!important;}
-[data-baseweb="select"]>div,[data-testid="stTextInput"] input,[data-testid="stDateInput"] input{
-    background-color:#FFFFFF!important;border:1.5px solid #D1D9E0!important;
-    border-radius:8px!important;color:#1C2B3A!important;}
-.stButton>button[kind="primary"]{
-    background:linear-gradient(135deg,#1A6FC4 0%,#1557A0 100%)!important;
-    border:none!important;color:#FFFFFF!important;border-radius:8px!important;
-    font-weight:600!important;box-shadow:0 2px 8px rgba(26,111,196,.30)!important;}
-.stButton>button[kind="primary"]:hover{
-    background:linear-gradient(135deg,#1557A0 0%,#0F3F78 100%)!important;transform:translateY(-1px)!important;}
-.stButton>button[kind="secondary"]{
-    background-color:#FFFFFF!important;border:1.5px solid #1A6FC4!important;
-    color:#1A6FC4!important;border-radius:8px!important;font-weight:600!important;}
-.stTabs [data-baseweb="tab-list"]{gap:6px;background:#FFFFFF;border:1px solid #E2E8F0;
-    border-radius:12px;padding:5px 6px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
-.stTabs [data-baseweb="tab"]{background:transparent!important;border:none!important;
-    border-radius:8px!important;color:#64748B!important;font-weight:500!important;
-    font-size:.875rem!important;padding:8px 18px!important;transition:all .18s!important;}
-.stTabs [data-baseweb="tab"]:hover{background:#F1F5F9!important;color:#1A6FC4!important;}
-.stTabs [aria-selected="true"]{background:linear-gradient(135deg,#1A6FC4 0%,#0D9E6E 100%)!important;
-    color:#FFFFFF!important;font-weight:700!important;box-shadow:0 2px 8px rgba(26,111,196,.28)!important;}
-.kpi-card{background:#FFFFFF;border:1px solid #E8EDF2;border-top:3px solid #1A6FC4;
-    border-radius:14px;padding:22px 20px 18px;text-align:center;
-    box-shadow:0 2px 12px rgba(0,0,0,.06);transition:box-shadow .22s,transform .22s;}
-.kpi-card:hover{box-shadow:0 8px 28px rgba(0,0,0,.11);transform:translateY(-3px);}
-.kpi-card.estado-verde{border-top-color:#0D9E6E;}
-.kpi-card.estado-ambar{border-top-color:#F59E0B;}
-.kpi-card.estado-rojo{border-top-color:#E53E3E;}
-.kpi-val{font-size:2.1rem;font-weight:800;letter-spacing:-.6px;line-height:1.1;}
-.kpi-lbl{font-size:.70rem;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.10em;margin-top:8px;}
-.kpi-sub{font-size:.76rem;color:#B0BAC9;margin-top:3px;}
-.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:999px;
-    font-size:.78rem;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.10);}
-.badge-green{background:linear-gradient(135deg,#D1FAE5,#A7F3D0);color:#065F46;border:1px solid #6EE7B7;}
-.badge-amber{background:linear-gradient(135deg,#FEF3C7,#FDE68A);color:#92400E;border:1px solid #FCD34D;}
-.badge-red{background:linear-gradient(135deg,#FEE2E2,#FECACA);color:#991B1B;border:1px solid #FCA5A5;}
-.nivel-pill{display:inline-block;padding:4px 13px;border-radius:999px;font-size:.76rem;font-weight:700;}
-.nivel-N{background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;}
-.nivel-PB{background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;}
-.nivel-PA{background:#FFF1F2;color:#9F1239;border:1px solid #FECDD3;}
-.aiqc-header{background:linear-gradient(135deg,#1A6FC4 0%,#0D9E6E 100%);
-    border-radius:16px;padding:22px 28px;margin-bottom:12px;box-shadow:0 4px 20px rgba(26,111,196,.22);}
-.aiqc-header h2{color:#FFFFFF!important;margin:0 0 4px;font-size:1.5rem;font-weight:800;}
-.aiqc-header .meta{color:rgba(255,255,255,.82);font-size:.875rem;}
-.quick-bar{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;
-    padding:10px 16px;margin-bottom:16px;box-shadow:0 1px 6px rgba(0,0,0,.05);}
-.sb-logo{text-align:center;font-size:2.8rem;margin-bottom:2px;}
-.sb-title{text-align:center;font-size:1.2rem;font-weight:800;
-    background:linear-gradient(135deg,#60A5FA,#34D399);-webkit-background-clip:text;
-    -webkit-text-fill-color:transparent;margin-bottom:2px;}
-.sb-sub{text-align:center;font-size:.75rem;color:#64748B!important;margin-bottom:16px;}
-.data-pill{background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.28);
-    border-radius:10px;padding:10px 14px;font-size:.82rem;color:#93C5FD!important;margin-top:8px;}
-.sync-pill{background:rgba(13,158,110,.12);border:1px solid rgba(13,158,110,.30);
-    border-radius:10px;padding:10px 14px;font-size:.82rem;color:#34D399!important;margin-top:8px;}
-.sec-head{font-size:.95rem;font-weight:700;color:#1A6FC4;border-left:3px solid #0D9E6E;
-    padding-left:10px;margin:26px 0 14px;}
-.login-card{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:20px;padding:52px 48px;
-    max-width:420px;margin:60px auto 0;box-shadow:0 12px 40px rgba(0,0,0,.10);}
-.gemini-banner{background:linear-gradient(135deg,#EFF6FF 0%,#ECFDF5 100%);
-    border:1px solid #BFDBFE;border-radius:10px;padding:10px 16px;font-size:12.5px;
-    color:#1E40AF;margin-bottom:14px;}
-.biorad-card{background:#FFFFFF;border:1px solid #E2E8F0;border-left:4px solid #1A6FC4;
-    border-radius:12px;padding:18px 20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
-.biorad-card-red{background:#FFFAFA;border:1px solid #FECACA;border-left:4px solid #E53E3E;
-    border-radius:12px;padding:18px 20px;margin-bottom:12px;box-shadow:0 2px 12px rgba(229,62,62,.08);}
-.biorad-card-amber{background:#FFFDF5;border:1px solid #FDE68A;border-left:4px solid #F59E0B;
-    border-radius:12px;padding:18px 20px;margin-bottom:12px;box-shadow:0 2px 12px rgba(245,158,11,.08);}
-.audit-row{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;
-    padding:8px 14px;margin-bottom:6px;font-size:.82rem;}
-.role-admin{background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;
-    border-radius:6px;padding:2px 8px;font-size:.72rem;font-weight:700;}
-.role-supervisor{background:#F0FDF4;color:#166534;border:1px solid #BBF7D0;
-    border-radius:6px;padding:2px 8px;font-size:.72rem;font-weight:700;}
-.role-tecnico{background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;
-    border-radius:6px;padding:2px 8px;font-size:.72rem;font-weight:700;}
-table{width:100%;border-collapse:collapse;font-size:.86rem;}
-thead tr{background:#F8FAFC;}
-th{padding:11px 13px;text-align:left;font-weight:700;color:#475569;
-    border-bottom:2px solid #E2E8F0;text-transform:uppercase;font-size:.72rem;letter-spacing:.06em;}
-td{padding:10px 13px;border-bottom:1px solid #F1F5F9;color:#1C2B3A;}
-tr:hover td{background:#F8FAFC;}
-[data-testid="stChatMessage"]{background:#FFFFFF!important;border:1px solid #E2E8F0!important;
-    border-radius:14px!important;box-shadow:0 1px 4px rgba(0,0,0,.05)!important;}
-[data-testid="stMetric"]{background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;
-    padding:16px 14px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
-[data-testid="stExpander"]{background:#FFFFFF!important;border:1px solid #E2E8F0!important;border-radius:10px!important;}
-::-webkit-scrollbar{width:6px;height:6px;}
-::-webkit-scrollbar-track{background:#F1F5F9;}
-::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:3px;}
-::-webkit-scrollbar-thumb:hover{background:#94A3B8;}
-</style>
-""", unsafe_allow_html=True)
-
+st.markdown(CSS, unsafe_allow_html=True)
 
 # ==============================================================
-#  BIO-RAD KB
-# ==============================================================
-BIORAD_KB = {
-    "Glucosa":{"producto":"Liquichek Chemistry Control / Lyphochek Chemistry","grupo":"Bioquímica básica",
-        "causas_comunes":["Evaporación del vial","Degradación glucolítica in vitro","Interferencia por hemólisis severa","Calibración desactualizada"],
-        "acciones_1_3s":["No liberar resultados de pacientes","Repetir con NUEVO vial del mismo lote","Si persiste: vial de LOTE DIFERENTE","Verificar temperatura (2-8 oC)","Recalibrar con estándar trazable IDMS"],
-        "acciones_warn":["Monitoreo estrecho","Revisar tendencia en Levey-Jennings","Verificar temperatura del baño"],
-        "causas_deriva":["Deterioro del reactivo","Deriva del calibrador","Fluctuación de temperatura"],
-        "estabilidad_biorad":"Reconstituido: 5 días a 2-8 oC / 30 días a -20 oC",
-        "interferencias":"Hemólisis (+), lipemia severa (- GOD-PAP), ácido ascórbico >30 mg/dL (-)",
-        "referencia":"Liquichek Chemistry Control Insert · Bio-Rad cat. 66796 / CLSI EP7-A2"},
-    "Potasio (K+)":{"producto":"Liquichek Chemistry Control / Liquichek Electrolyte Plus","grupo":"Bioquímica básica",
-        "causas_comunes":["Evaporación del vial","Contaminación por EDTA","Hemólisis in vitro del control","Temperatura incorrecta del módulo ISE"],
-        "acciones_1_3s":["Verificar que el vial no lleva abierto más de 8 horas","Repetir con vial nuevo","Revisar el electrodo ISE","Recalibrar el módulo ISE"],
-        "acciones_warn":["Verificar tiempo de apertura del vial","Comprobar limpieza del electrodo ISE"],
-        "causas_deriva":["Desgaste de la membrana del electrodo ISE","Acumulación de proteínas en el electrodo"],
-        "estabilidad_biorad":"Reconstituido: 8 h a temperatura ambiente / 5 días a 2-8 oC",
-        "interferencias":"Hemólisis (++), EDTA (+), heparina litio (mínimo)",
-        "referencia":"Liquichek Electrolyte Plus Insert · Bio-Rad · CLSI EP9-A3"},
-    "Sodio":{"producto":"Liquichek Chemistry Control / Liquichek Electrolyte Plus","grupo":"Bioquímica básica",
-        "causas_comunes":["Pseudohiponatremia por lipemia severa","Dilución incorrecta del control","Electrodo ISE de sodio deteriorado"],
-        "acciones_1_3s":["Repetir control con vial nuevo","Verificar volumen de reconstitución","Revisar y limpiar el electrodo ISE de sodio"],
-        "acciones_warn":["Revisar mezcla por inversión suave","Verificar temperatura ISE"],
-        "causas_deriva":["Envejecimiento de la membrana ISE","Cambio de lote sin recalibración"],
-        "estabilidad_biorad":"Reconstituido: 8 h a temperatura ambiente / 5 días a 2-8 oC",
-        "interferencias":"Lipemia (- métodos fotométricos), hemólisis (mínimo en ISE)",
-        "referencia":"Liquichek Electrolyte Plus Insert · Bio-Rad · CLSI EP7-A2"},
-    "Creatinina":{"producto":"Liquichek Chemistry Control","grupo":"Bioquímica básica",
-        "causas_comunes":["Interferencia por cromógenos de Jaffé","Diferencia de método: Jaffé vs enzimático","Calibración no trazable a IDMS"],
-        "acciones_1_3s":["Confirmar valores del insert para TU método","Cambiar a método enzimático si hay interferencia","Recalibrar con calibrador trazable IDMS (NIST SRM 967)"],
-        "acciones_warn":["Verificar método (Jaffé vs enzimático)","Revisar caducidad del reactivo Jaffé"],
-        "causas_deriva":["Degradación del ácido pícrico en método Jaffé","Deriva del calibrador"],
-        "estabilidad_biorad":"Reconstituido: 5 días a 2-8 oC",
-        "interferencias":"Bilirrubina >10 mg/dL (+ Jaffé), cefalosporinas (+), acetona (+)",
-        "referencia":"Liquichek Chemistry Control Insert · Bio-Rad · CLSI EP6-A"},
-    "ALT (Transaminasa)":{"producto":"Liquichek Chemistry Control / Lyphochek Chemistry","grupo":"Enzimas hepáticas",
-        "causas_comunes":["Temperatura de incubación incorrecta","Degradación enzimática por ciclos de congelación","Longitud de onda del fotómetro fuera de tolerancia (340 nm)","Reactivo de piridoxal fosfato (P-5-P) faltante"],
-        "acciones_1_3s":["Verificar temperatura del baño (37,0 oC +/- 0,1 oC)","Repetir con vial nuevo","Comprobar que el reactivo contiene P-5-P activado","Verificar longitud de onda del espectrofotómetro"],
-        "acciones_warn":["Comprobar temperatura del módulo fotométrico","Verificar mezcla del vial"],
-        "causas_deriva":["Deterioro del NADH (sensible a luz UV)","Fluctuación de temperatura","Cambio de lote sin ajuste de valores objetivo"],
-        "estabilidad_biorad":"Reconstituido: 5 días a 2-8 oC",
-        "interferencias":"Hemólisis severa (+), lipemia >500 mg/dL (variable), bilirrubina >20 mg/dL (+ leve)",
-        "referencia":"Liquichek Chemistry Control Insert · Bio-Rad · IFCC EP9 / CLSI EP15-A3"},
-    "AST":{"producto":"Liquichek Chemistry Control / Lyphochek Chemistry","grupo":"Enzimas hepáticas",
-        "causas_comunes":["Hemólisis in vitro (AST eritrocitaria es 15x mayor)","Temperatura incorrecta","P-5-P ausente o degradado"],
-        "acciones_1_3s":["Inspeccionar el vial (hemólisis visible = color rosado)","Repetir con vial nuevo sin hemólisis","Verificar temperatura (37,0 oC +/- 0,1 oC)"],
-        "acciones_warn":["Mezclar por inversión suave","Verificar absorbancia del blanco"],
-        "causas_deriva":["Degradación del NADH por luz","Acumulación de oxalacetato en R2 abierto"],
-        "estabilidad_biorad":"Reconstituido: 5 días a 2-8 oC",
-        "interferencias":"Hemólisis (+++ critico), lipemia moderada (+ leve)",
-        "referencia":"Liquichek Chemistry Control Insert · Bio-Rad · IFCC / CLSI EP7-A2"},
-    "GGT":{"producto":"Liquichek Chemistry Control","grupo":"Enzimas hepáticas",
-        "causas_comunes":["Temperatura incorrecta (+/- 0,5 oC)","pH fuera de rango (óptimo 7,9-8,2)","Evaporación del substrato por mal sellado"],
-        "acciones_1_3s":["Verificar temperatura del módulo fotométrico","Comprobar pH del tampón","Repetir con vial nuevo y reactivo fresco"],
-        "acciones_warn":["Revisar fecha de preparación del reactivo","Verificar ausencia de precipitados"],
-        "causas_deriva":["Hidrólisis espontánea del substrato","Fluctuación de pH por CO2 ambiental"],
-        "estabilidad_biorad":"Reconstituido: 5 días a 2-8 oC",
-        "interferencias":"Hemólisis leve (mínimo), lipemia >1000 mg/dL (+)",
-        "referencia":"Liquichek Chemistry Control Insert · Bio-Rad · ECCLS / DGKC"},
-    "LDH":{"producto":"Liquichek Chemistry Control / Lyphochek Chemistry","grupo":"Enzimas hepáticas",
-        "causas_comunes":["Hemólisis (LDH eritrocitaria es 160x mayor)","Temperatura critica: cada oC modifica la actividad ~8-10%","Inhibición por exceso de piruvato"],
-        "acciones_1_3s":["Inspeccionar el vial (hemólisis = causa más frecuente)","Repetir con vial nuevo sin hemólisis","Verificar temperatura (37,0 oC)"],
-        "acciones_warn":["Verificar que el reactivo no tiene precipitados","Atemperar el reactivo antes de su uso"],
-        "causas_deriva":["Degradación del NADH por congelación repetida","Cambio de isoenzimas por lote diferente"],
-        "estabilidad_biorad":"Reconstituido: 24 h a 2-8 oC (muy lábil - usar el mismo día)",
-        "interferencias":"Hemólisis (+++ critico), oxalato (-), urea elevada (- leve)",
-        "referencia":"Liquichek Chemistry Control Insert · Bio-Rad · IFCC/DGKC"},
-    "Colesterol":{"producto":"Liquichek Lipid Control / Lyphochek Lipid","grupo":"Lípidos",
-        "causas_comunes":["Diferencia de método: CHOD-PAP vs Abell-Kendall","Interferencia por bilirrubina >5 mg/dL","Calibrador no trazable a NIST SRM 1951c"],
-        "acciones_1_3s":["Verificar que los valores del insert corresponden a TU método","Repetir con vial nuevo","Recalibrar con calibrador trazable a NIST SRM 1951c"],
-        "acciones_warn":["Verificar mezcla del vial (colesterol puede precipitar)"],
-        "causas_deriva":["Degradación de la colesterol oxidasa (CHOD)","Cambio de lote de reactivo"],
-        "estabilidad_biorad":"Reconstituido: 7 días a 2-8 oC",
-        "interferencias":"Bilirrubina >5 mg/dL (- CHOD-PAP), hemólisis (+ leve), ácido ascórbico (-)",
-        "referencia":"Liquichek Lipid Control Insert · Bio-Rad · CDC/NHLBI"},
-    "Triglicéridos":{"producto":"Liquichek Lipid Control / Lyphochek Lipid","grupo":"Lípidos",
-        "causas_comunes":["Glicerol endógeno libre en el control","Interferencia por hemólisis (inhibe la peroxidasa)"],
-        "acciones_1_3s":["Verificar si el insert especifica valores con/sin corrección por glicerol","Repetir control con vial nuevo"],
-        "acciones_warn":["Verificar que el control se ha atemperado correctamente"],
-        "causas_deriva":["Degradación de la lipasa pancreática","Acumulación de glicerol libre"],
-        "estabilidad_biorad":"Reconstituido: 7 días a 2-8 oC",
-        "interferencias":"Hemólisis (- peroxidasa), glicerol libre (+), bilirrubina >5 mg/dL (-)",
-        "referencia":"Liquichek Lipid Control Insert · Bio-Rad"},
-    "HDL-Colesterol":{"producto":"Liquichek Lipid Control","grupo":"Lípidos",
-        "causas_comunes":["Efecto matriz en métodos de precipitación directa","Interferencia de VLDL elevadas"],
-        "acciones_1_3s":["Verificar valores del insert para TU método específico de HDL","Repetir con vial nuevo","Recalibrar"],
-        "acciones_warn":["Confirmar que el tipo de método coincide con los valores del insert"],
-        "causas_deriva":["Cambio de lote de reactivo sin recalibración"],
-        "estabilidad_biorad":"Reconstituido: 7 días a 2-8 oC",
-        "interferencias":"Triglicéridos >400 mg/dL (+ falso en directo), bilirrubina >10 mg/dL (+)",
-        "referencia":"Liquichek Lipid Control Insert · Bio-Rad · CDC Lipid Standardization"},
-    "TSH":{"producto":"Lyphochek Immunoassay Plus Control","grupo":"Inmunoensayo hormonal",
-        "causas_comunes":["Anticuerpos heterófilos (HAMA) en ensayos sandwich","Degradación por ciclos de congelación/descongelación"],
-        "acciones_1_3s":["Verificar que el control está asignado a TU plataforma","Repetir con vial nuevo","Revisar número de ciclos de congelación (max. 3)"],
-        "acciones_warn":["Revisar número de lote del reactivo vs calibración activa"],
-        "causas_deriva":["Cambio de lote (recalibrar obligatoriamente)"],
-        "estabilidad_biorad":"Reconstituido: 30 días a 2-8 oC (Lyphochek)",
-        "interferencias":"HAMA (++), biotina >20 ng/mL (-), hemólisis severa (variable)",
-        "referencia":"Lyphochek Immunoassay Plus Control Insert · Bio-Rad · CLSI EP15-A3"},
-    "T4 Libre (FT4)":{"producto":"Lyphochek Immunoassay Plus Control","grupo":"Inmunoensayo hormonal",
-        "causas_comunes":["Interferencia por proteínas de unión (TBG, albúmina)","Dilución incorrecta del control liofilizado"],
-        "acciones_1_3s":["Confirmar que los valores objetivo son específicos para TU analizador","Repetir con vial nuevo reconstituido correctamente"],
-        "acciones_warn":["Comprobar el volumen de reconstitución exacto"],
-        "causas_deriva":["Cambio de lote de reactivo","Degradación por temperatura inadecuada"],
-        "estabilidad_biorad":"Reconstituido: 30 días a 2-8 oC (Lyphochek)",
-        "interferencias":"Biotina >20 ng/mL (-), HAMA (variable), heparina IV (+ artefactual)",
-        "referencia":"Lyphochek Immunoassay Plus Control Insert · Bio-Rad"},
-    "Hemoglobina":{"producto":"Lyphochek Hematology / Liquichek Hematology","grupo":"Hematología",
-        "causas_comunes":["Envejecimiento del control (eritrocitos se fragmentan)","Temperatura de almacenamiento incorrecta"],
-        "acciones_1_3s":["Verificar fecha de caducidad del vial abierto (5-7 días)","Repetir con vial nuevo"],
-        "acciones_warn":["Verificar temperatura (2-8 oC, NO congelar)","Invertir suavemente 8-10 veces antes de analizar"],
-        "causas_deriva":["Fragmentación progresiva de eritrocitos"],
-        "estabilidad_biorad":"Abierto: 5-7 días a 2-8 oC / No congelar",
-        "interferencias":"Lipemia severa (+ HGB fotométrico), ictericia severa (+ HGB)",
-        "referencia":"Lyphochek Hematology Control Insert · Bio-Rad · CLSI H26-A2"},
-    "Calcio":{"producto":"Liquichek Chemistry Control","grupo":"Bioquímica básica",
-        "causas_comunes":["Interferencia por EDTA (quelante del calcio)","pH del control fuera de rango","Evaporación del vial"],
-        "acciones_1_3s":["Descartar contaminación con EDTA","Repetir con vial nuevo","Verificar pH del reactivo","Recalibrar con calibrador trazable NIST SRM 956c"],
-        "acciones_warn":["Verificar tiempo de apertura del vial","Comprobar temperatura (37 oC)"],
-        "causas_deriva":["Degradación del indicador o-cresolftaleína","Cambio de lote de reactivo"],
-        "estabilidad_biorad":"Reconstituido: 5 días a 2-8 oC",
-        "interferencias":"EDTA (--- critico), magnesio elevado (+ leve), hemólisis (+ leve)",
-        "referencia":"Liquichek Chemistry Control Insert · Bio-Rad · CLSI EP7-A2"},
-    "Amilasa":{"producto":"Liquichek Chemistry Control","grupo":"Bioquímica básica",
-        "causas_comunes":["Temperatura de incubación incorrecta (método cinético muy sensible a T)","Degradación del substrato por luz o calor","Calibración desactualizada o calibrador no trazable","Inhibición por EDTA si la muestra es plasma","Contaminación cruzada con saliva"],
-        "acciones_1_3s":["No liberar resultados de pacientes hasta resolver la alarma","Repetir con NUEVO vial del mismo lote","Si persiste: repetir con vial de LOTE DIFERENTE","Verificar temperatura del módulo fotométrico (37,0 oC +/- 0,1 oC)","Recalibrar con estándar trazable","Documentar acción y responsable"],
-        "acciones_warn":["Monitoreo estrecho durante 3 días","Revisar tendencia en Levey-Jennings","Verificar temperatura del baño","Comprobar absorbancia del blanco (<1.5 AU)"],
-        "causas_deriva":["Deterioro del substrato (sensible a temperatura y luz)","Deriva del calibrador","Cambio de lote sin ajuste de valores objetivo"],
-        "estabilidad_biorad":"Reconstituido: 5 días a 2-8 oC",
-        "interferencias":"EDTA (-), hemólisis leve (mínimo), lipemia >500 mg/dL (variable), bilirrubina >20 mg/dL (leve)",
-        "referencia":"Liquichek Chemistry Control Insert · Bio-Rad / IFCC método cinético colorimétrico"},
-}
-
-GRUPOS_ANALITICOS = {
-    "Bioquímica básica":     ["Glucosa","Potasio (K+)","Sodio","Creatinina","Calcio","Amilasa"],
-    "Enzimas hepáticas":     ["ALT (Transaminasa)","AST","GGT","LDH"],
-    "Lípidos":               ["Colesterol","Triglicéridos","HDL-Colesterol"],
-    "Inmunoensayo hormonal": ["TSH","T4 Libre (FT4)"],
-    "Hematología":           ["Hemoglobina"],
-}
-
-def buscar_kb(analito, estado):
-    if analito in BIORAD_KB: return BIORAD_KB[analito]
-    an_norm = analito.lower()
-    for key in BIORAD_KB:
-        if an_norm in key.lower() or key.lower() in an_norm: return BIORAD_KB[key]
-    return None
-
-def render_kb_panel(analito, estado, regla, nivel):
-    kb = buscar_kb(analito, estado)
-    nivel_label = NIVELES.get(nivel, NIVELES["N"])["label"]
-    card_class = "biorad-card-red" if estado=="Rojo" else "biorad-card-amber" if estado=="Ámbar" else "biorad-card"
-    if kb is None:
-        st.markdown(f'<div class="{card_class}"><b>Bio-Rad KB:</b> No hay ficha para <b>{analito}</b>. '
-                    f'Consulta en <a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet</a>.</div>',
-                    unsafe_allow_html=True); return
-    ico = "🔴" if estado=="Rojo" else "🟡"
-    st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
-    st.markdown(f"#### {ico} Guía Bio-Rad — **{analito}** · {nivel_label} · Regla `{regla}`\n"
-                f"*Producto: {kb['producto']} · Grupo: {kb['grupo']}*")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Causas más probables:**")
-        for c in kb["causas_comunes"]: st.markdown(f"- {c}")
-        if estado=="Ámbar" and any(r in regla for r in ["10_x","4_1s","2_2s"]):
-            st.markdown("**Causas de deriva:**")
-            for c in kb.get("causas_deriva",[]): st.markdown(f"- {c}")
-    with col2:
-        acciones = kb["acciones_1_3s"] if estado=="Rojo" else kb["acciones_warn"]
-        st.markdown("**Acciones correctivas:**")
-        for a in acciones: st.markdown(f"- {a}")
-    st.markdown(f"**Interferencias:** {kb['interferencias']}\n\n**Estabilidad:** {kb['estabilidad_biorad']}\n\n**Referencia:** {kb['referencia']}")
-    st.markdown(f'<small><a href="https://myeinserts-app.qcnet.com/home" target="_blank">myeInserts QCNet Bio-Rad</a></small>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-
-# ==============================================================
-#  CONSTANTES
-# ==============================================================
-NIVELES = {
-    "N":  {"label":"Normal",         "pill":"nivel-N",  "icon":"🔵"},
-    "PB": {"label":"Patológico Bajo", "pill":"nivel-PB", "icon":"🟡"},
-    "PA": {"label":"Patológico Alto", "pill":"nivel-PA", "icon":"🔴"},
-}
-def nivel_badge(codigo):
-    cfg = NIVELES.get(codigo, NIVELES["N"])
-    return f'<span class="nivel-pill {cfg["pill"]}">{cfg["icon"]} {cfg["label"]}</span>'
-
-
-# ==============================================================
-#  COBAS 8000 KB
-# ==============================================================
-COBAS_8000_KB = """
-=== ANALIZADOR MODULAR COBAS® 8000 ===
-- Módulos: cobas ISE (Na+,K+,Cl-,Ca++), c701/c702/c502 (fotométrico), e602 (ECL).
-- Calibración ISE: cada 24 horas obligatorio.
-- Bandeja verde: procesar antes de la calibración diaria ISE (~20 min).
-- Limpieza pipeta diaria: Standby → abrir cubierta → gasa con alcohol de arriba abajo.
-- Limpiar puertos vaciado ISE: gasa + agua desionizada al finalizar el día.
-- Temperatura baño fotométrico: 37,0 °C ± 0,1 °C (crítico para ALT/AST/LDH).
-- Longitud de onda NADH: 340 nm (ALT, AST, LDH).
-- Interlock: cubierta abierta = equipo se detiene, muestras inválidas.
-TROUBLESHOOTING:
-- Error QC ISE: limpiar puerto vaciado, revisar electrodo, bandeja verde + calibrar.
-- Error QC enzimas: verificar temperatura 37,0°C, verificar fotómetro 340nm.
-- Alarma Interlock: cerrar cubierta, reinicializar módulo.
-- Calibración ISE no válida: procesar bandeja verde → calibrar ISE.
-"""
-
-# ==============================================================
-#  GEMINI
-# ==============================================================
-GEMINI_MODELS = ["models/gemini-2.5-flash","models/gemini-2.0-flash","models/gemini-2.0-flash-lite"]
-GEMINI_SYSTEM = (
-    "Eres AIQC, asistente de Control de Calidad de un laboratorio clínico. "
-    "Usas controles Bio-Rad (Liquichek/Lyphochek) y el analizador cobas® 8000 (Roche). "
-    "Datos de QC vienen de OpenLab (Agilent) sincronizados automáticamente vía GitHub. "
-    "Para preguntas técnicas de QC: usa SOLO los datos del bloque === DATOS REALES ===, NUNCA inventes. "
-    "Para alarmas: menciona causas y acciones según Bio-Rad Y manual cobas 8000 si aplica. "
-    "R-4s = ERROR ALEATORIO entre niveles — NO recalibrar como primer paso. "
-    "Para preguntas no técnicas: responde brevemente y de forma natural, SIN mencionar datos del lab. "
-    "Idioma: español. Técnico: Markdown conciso. General: tono cercano. Z-Score: Z=(x-media)/SD."
-)
-GEMINI_CFG = {"temperature":0.2,"max_output_tokens":2048,"top_p":0.85}
-
-def get_api_key():
-    return (st.secrets.get("gemini",{}).get("api_key") or
-            st.secrets.get("GEMINI_API_KEY","") or os.environ.get("GEMINI_API_KEY",""))
-
-
-# ==============================================================
-#  BASE DE DATOS
-# ==============================================================
-def get_db_path():
-    custom = st.secrets.get("db",{}).get("path","")
-    if custom: return custom
-    if os.path.exists("/home"):
-        home = os.path.expanduser("~")
-        db_dir = os.path.join(home,".aiqc")
-        os.makedirs(db_dir, exist_ok=True)
-        return os.path.join(db_dir,"aiqc_acciones.db")
-    return "/tmp/aiqc_acciones.db"
-
-DB_PATH = get_db_path()
-
-def init_db():
-    con = sqlite3.connect(DB_PATH, check_same_thread=False)
-    con.execute("PRAGMA journal_mode=WAL")
-    con.execute("""CREATE TABLE IF NOT EXISTS acciones (
-        clave TEXT PRIMARY KEY, hecha INTEGER DEFAULT 0,
-        ts TEXT, usuario TEXT DEFAULT 'sistema')""")
-    con.execute("""CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
-        rol TEXT NOT NULL DEFAULT 'tecnico', nombre TEXT DEFAULT '',
-        activo INTEGER DEFAULT 1, creado_en TEXT DEFAULT (datetime('now')),
-        ultimo_acceso TEXT)""")
-    con.execute("""CREATE TABLE IF NOT EXISTS auditoria (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ts TEXT DEFAULT (datetime('now')),
-        usuario TEXT NOT NULL, accion TEXT NOT NULL, detalle TEXT DEFAULT '')""")
-    con.commit()
-    _seed_admin(con)
-    return con
-
-def _seed_admin(con):
-    if con.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0:
-        pwd_default = st.secrets.get("auth",{}).get("admin_password","admin2024")
-        pwd_hash = bcrypt.hashpw(pwd_default.encode(), bcrypt.gensalt()).decode()
-        con.execute("INSERT INTO usuarios (username,password_hash,rol,nombre) VALUES (?,?,'admin','Administrador')",
-                    ("admin", pwd_hash))
-        con.commit()
-
-def verificar_password(password, password_hash):
-    try: return bcrypt.checkpw(password.encode(), password_hash.encode())
-    except: return False
-
-def hash_password(password):
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-def login_usuario(con, username, password):
-    row = con.execute("SELECT id,username,password_hash,rol,nombre,activo FROM usuarios WHERE username=?",
-                      (username,)).fetchone()
-    if row is None:
-        registrar_auditoria(con, username, "LOGIN_FALLIDO", "Usuario no existe"); return None
-    id_, uname, pwd_hash, rol, nombre, activo = row
-    if not activo:
-        registrar_auditoria(con, username, "LOGIN_DENEGADO", "Usuario desactivado"); return None
-    if not verificar_password(password, pwd_hash):
-        registrar_auditoria(con, username, "LOGIN_FALLIDO", "Contraseña incorrecta"); return None
-    con.execute("UPDATE usuarios SET ultimo_acceso=datetime('now') WHERE id=?", (id_,))
-    con.commit()
-    registrar_auditoria(con, username, "LOGIN_OK", f"Rol: {rol}")
-    return {"id":id_,"username":uname,"rol":rol,"nombre":nombre}
-
-def registrar_auditoria(con, usuario, accion, detalle=""):
-    try:
-        con.execute("INSERT INTO auditoria (usuario,accion,detalle) VALUES (?,?,?)", (usuario,accion,detalle))
-        con.commit()
-    except: pass
-
-def tiene_permiso(rol_usuario, rol_requerido):
-    jerarquia = {"admin":3,"supervisor":2,"tecnico":1}
-    return jerarquia.get(rol_usuario,0) >= jerarquia.get(rol_requerido,99)
-
-def render_login(con):
-    st.markdown("""<div class="login-card">
-        <div style="font-size:3rem;text-align:center">🔬</div>
-        <div style="text-align:center;font-size:1.8rem;font-weight:800;color:#1A6FC4;margin-bottom:4px">AIQC</div>
-        <div style="text-align:center;font-size:.86rem;color:#64748B;margin-bottom:28px">
-            Artificial Intelligence for Quality Control · v4.13</div></div>""", unsafe_allow_html=True)
-    _, mid, _ = st.columns([1,1.8,1])
-    with mid:
-        st.markdown("<br>", unsafe_allow_html=True)
-        username = st.text_input("Usuario", placeholder="admin", key="_u")
-        pwd      = st.text_input("Contraseña", type="password", placeholder="••••••", key="_p")
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Acceder al sistema →", use_container_width=True, type="primary"):
-            usuario_data = login_usuario(con, username.strip(), pwd)
-            if usuario_data:
-                st.session_state["auth"]    = True
-                st.session_state["usuario"] = usuario_data
-                st.rerun()
-            else:
-                st.error("Credenciales incorrectas o usuario desactivado.")
-
-def load_acciones(con):
-    return {r[0]:bool(r[1]) for r in con.execute("SELECT clave,hecha FROM acciones").fetchall()}
-
-def save_accion(con, clave, hecha, usuario="sistema"):
-    con.execute("INSERT OR REPLACE INTO acciones VALUES (?,?,datetime('now'),?)", (clave,int(hecha),usuario))
-    con.commit()
-    registrar_auditoria(con, usuario, f"ACCION_{'COMPLETADA' if hecha else 'PENDIENTE'}", clave)
-
-
-# ==============================================================
-#  INIT
+# INIT
 # ==============================================================
 if "db_con" not in st.session_state:
     st.session_state["db_con"] = init_db()
 db_con = st.session_state["db_con"]
 
 if not st.session_state.get("auth"):
-    render_login(db_con); st.stop()
+    render_login(db_con)
+    st.stop()
 
-usuario_sesion = st.session_state.get("usuario", {"username":"sistema","rol":"tecnico","nombre":""})
-usuario_actual = usuario_sesion["username"]
-rol_actual     = usuario_sesion["rol"]
-
-
-# ==============================================================
-#  DATOS DEMO
-# ==============================================================
-@st.cache_data(ttl=3600, show_spinner=False)
-def build_demo():
-    np.random.seed(42)
-    today = pd.Timestamp.now().replace(hour=0,minute=0,second=0,microsecond=0)
-    dates = [today - timedelta(days=29-i) for i in range(30)]
-    DEMO = {
-        "Amilasa": {
-            "N":  {"media":50.0,"sd":2.0,"patron":[0]*20+[0.4,0.7,1.0,1.2,1.5,1.8,2.1,2.4,2.7,3.1]},
-            "PB": {"media":25.0,"sd":1.5,"patron":[0]*27+[-2.2,-2.5,-2.8]},
-            "PA": {"media":150.0,"sd":6.0,"patron":[0]*25+[1.1,1.3,1.5,1.8,2.2]},
-        },
-        "ALT (Transaminasa)": {
-            "N":  {"media":35.0,"sd":2.5,"patron":[0]*30},
-            "PB": {"media":12.0,"sd":1.5,"patron":[0]*26+[1.2,-1.3,1.4,-1.5]},
-            "PA": {"media":120.0,"sd":8.0,"patron":[0]*30},
-        },
-    }
-    rows = []
-    for analito, niveles in DEMO.items():
-        for nivel_cod, cfg in niveles.items():
-            media=cfg["media"]; sd=cfg["sd"]; patron=cfg["patron"]
-            for i, d in enumerate(dates):
-                drift=patron[i]*sd; ruido=np.random.normal(0,sd*0.6)
-                rows.append({"Fecha":d,"Analito":analito,"Nivel":nivel_cod,
-                              "Valor":round(media+drift+ruido,3),"Media_Objetivo":media,
-                              "SD_Objetivo":sd,"Lote":"LOT-DEMO-2025"})
-    return pd.DataFrame(rows)
-
-
-# ==============================================================
-#  CARGA CSV/XLSX
-# ==============================================================
-COL_SYNONYMS = {
-    "Fecha":["fecha","date","dia","timestamp","time","datetime"],
-    "Analito":["analito","analyte","test","prueba","parametro","magnitud"],
-    "Nivel":["nivel","level","control_level","qc_level","tipo_control"],
-    "Valor":["valor","value","resultado","result","medicion","concentracion"],
-    "Media_Objetivo":["media_objetivo","media","mean","target","objetivo","xbar"],
-    "SD_Objetivo":["sd_objetivo","sd","desviacion","std","sigma","desvest"],
-    "Lote":["lote","lot","batch","lote_reactivo","reactivo"],
-}
-def _norm(s):
-    return s.lower().strip().translate(str.maketrans("áéíóúàèìòùäëïöüÁÉÍÓÚ","aeiouaeiouaeiouAEIOU"))
-
-def normalizar_df(df):
-    df_n={_norm(c):c for c in df.columns}; rename={}
-    for interno,sins in COL_SYNONYMS.items():
-        for s in sins:
-            if s in df_n: rename[df_n[s]]=interno; break
-        if interno not in rename.values():
-            for cn,co in df_n.items():
-                if any(s in cn or cn in s for s in sins): rename[co]=interno; break
-    df2=df.rename(columns=rename)
-    obligatorias=["Fecha","Analito","Valor","Media_Objetivo","SD_Objetivo"]
-    faltan=[c for c in obligatorias if c not in df2.columns]
-    if faltan: return None,f"Columnas no encontradas: {', '.join(faltan)}."
-    if "Nivel" not in df2.columns: df2["Nivel"]="N"
-    if "Lote"  not in df2.columns: df2["Lote"]="N/A"
-    df2["Fecha"]=pd.to_datetime(df2["Fecha"],dayfirst=True,errors="coerce")
-    df2["Valor"]=pd.to_numeric(df2["Valor"],errors="coerce")
-    df2["Media_Objetivo"]=pd.to_numeric(df2["Media_Objetivo"],errors="coerce")
-    df2["SD_Objetivo"]=pd.to_numeric(df2["SD_Objetivo"],errors="coerce")
-    nivel_map={"n":"N","normal":"N","nivel 1":"N","nivel1":"N","n1":"N","1":"N",
-               "pb":"PB","patologico bajo":"PB","bajo":"PB","nivel 2":"PB","n2":"PB","2":"PB",
-               "pa":"PA","patologico alto":"PA","alto":"PA","nivel 3":"PA","n3":"PA","3":"PA"}
-    df2["Nivel"]=df2["Nivel"].astype(str).str.lower().str.strip().map(lambda x:nivel_map.get(x,"N"))
-    df2=df2.dropna(subset=obligatorias)
-    if df2.empty: return None,"Sin filas válidas."
-    return df2[obligatorias+["Nivel","Lote"]].reset_index(drop=True),""
-
-def leer_archivo(uploaded):
-    name=uploaded.name.lower()
-    try:
-        raw=pd.read_csv(uploaded,sep=None,engine="python") if name.endswith(".csv") else pd.read_excel(uploaded)
-        return normalizar_df(raw)
-    except Exception as e: return None,f"Error: {e}"
-
-
-# ==============================================================
-#  GITHUB SYNC
-# ==============================================================
-def leer_csv_github():
-    try:
-        cfg=st.secrets.get("github",{}); usuario=cfg.get("usuario",""); repo=cfg.get("repo","")
-        rama=cfg.get("rama","main"); archivo=cfg.get("archivo","data/controles_qc.csv"); token=cfg.get("token","")
-        if not all([usuario,repo,archivo]): return None,"Faltan datos en secrets.toml — sección [github]."
-        url=f"https://api.github.com/repos/{usuario}/{repo}/contents/{archivo}?ref={rama}"
-        headers={"Accept":"application/vnd.github.raw+json"}
-        if token: headers["Authorization"]=f"Bearer {token}"
-        r=requests.get(url,headers=headers,timeout=20)
-        if r.status_code==404: return None,f"Archivo no encontrado: `{archivo}`."
-        if r.status_code==401: return None,"Token de GitHub inválido."
-        if r.status_code!=200: return None,f"Error GitHub {r.status_code}: {r.text[:200]}"
-        contenido=r.content
-        try: df_raw=pd.read_csv(io.BytesIO(contenido),sep=";",encoding="utf-8-sig")
-        except: df_raw=pd.read_csv(io.BytesIO(contenido),sep=None,engine="python",encoding="utf-8-sig")
-        df,err=normalizar_df(df_raw)
-        if df is None: return None,f"CSV descargado pero formato incorrecto: {err}"
-        ts=datetime.now().strftime("%d/%m/%Y %H:%M")
-        return df,f"✅ {len(df)} filas · {df['Analito'].nunique()} analito(s) · sync {ts}"
-    except requests.exceptions.ConnectionError: return None,"Sin conexión a internet."
-    except Exception as e: return None,f"Error inesperado: {str(e)[:200]}"
-
-def _auto_refresh_github():
-    cfg_gh=st.secrets.get("github",{})
-    if not (cfg_gh.get("usuario") and cfg_gh.get("repo") and cfg_gh.get("archivo")): return
-    ahora=datetime.now(); ultima=st.session_state.get("github_last_sync")
-    if ultima is None or (ahora-ultima).total_seconds()>3600:
-        df_gh,msg=leer_csv_github()
-        if df_gh is not None:
-            st.session_state["df_github"]=df_gh
-            st.session_state["data_src_github"]=msg
-            st.session_state["github_last_sync"]=ahora
-
-
-# ==============================================================
-#  WESTGARD + R-4s
-# ==============================================================
-REGLAS_DESC=(
-    "1_3s: +/-3SD -> Rojo | 2_2s: 2 consec +/-2SD -> Rojo | "
-    "4_1s: 4 consec +/-1SD -> Ambar | 10_x: 10 consec mismo lado -> Ambar | "
-    "R-4s: 2 niveles opuestos >2SD -> Rojo (multi-nivel)"
+usuario_sesion = st.session_state.get(
+    "usuario", {"username": "sistema", "rol": "tecnico", "nombre": ""}
 )
+usuario_actual = usuario_sesion["username"]
+rol_actual = usuario_sesion["rol"]
 
-def evaluar_westgard(serie):
-    df=serie.copy().sort_values("Fecha").reset_index(drop=True)
-    df["Z_Score"]=(df["Valor"]-df["Media_Objetivo"])/df["SD_Objetivo"]
-    df["Regla_Violada"]="—"; df["Score_Riesgo"]=0; df["Estado"]="Verde"
-    for i in range(len(df)):
-        z=df.at[i,"Z_Score"]
-        if abs(z)>=3.0:
-            df.at[i,"Regla_Violada"]="1_3s"; df.at[i,"Score_Riesgo"]=90; df.at[i,"Estado"]="Rojo"; continue
-        if i>=1:
-            zp=df.at[i-1,"Z_Score"]
-            if abs(z)>=2.0 and abs(zp)>=2.0 and np.sign(z)==np.sign(zp):
-                df.at[i,"Regla_Violada"]="2_2s"; df.at[i,"Score_Riesgo"]=75; df.at[i,"Estado"]="Rojo"; continue
-        if i>=3:
-            w4=df.loc[i-3:i,"Z_Score"].values
-            if all(abs(x)>=1.0 for x in w4) and len(set(np.sign(w4)))==1:
-                df.at[i,"Regla_Violada"]="4_1s"; df.at[i,"Score_Riesgo"]=60; df.at[i,"Estado"]="Ámbar"; continue
-        if i>=9:
-            w10=df.loc[i-9:i,"Z_Score"].values; signos=set(np.sign(w10))
-            if len(signos)==1 and 0.0 not in signos:
-                df.at[i,"Regla_Violada"]="10_x"; df.at[i,"Score_Riesgo"]=55; df.at[i,"Estado"]="Ámbar"; continue
-        if abs(z)>=2.0:
-            df.at[i,"Regla_Violada"]="1_2s (warn)"; df.at[i,"Score_Riesgo"]=45; df.at[i,"Estado"]="Ámbar"; continue
-        df.at[i,"Score_Riesgo"]=max(0,int(abs(z)*18))
-    return df
-
-def evaluar_r4s(df_all,analito,f_min,f_max):
-    niveles=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
-    if len(niveles)<2: return None
-    zscores={}
-    for niv in niveles:
-        sub=df_all[(df_all["Analito"]==analito)&(df_all["Nivel"]==niv)&
-                   (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy()
-        if sub.empty: continue
-        u=sub.sort_values("Fecha").iloc[-1]; z=(u["Valor"]-u["Media_Objetivo"])/u["SD_Objetivo"]
-        zscores[niv]={"z":round(z,3),"valor":u["Valor"],"media":u["Media_Objetivo"],"sd":u["SD_Objetivo"]}
-    if len(zscores)<2: return None
-    pares=list(zscores.items())
-    for i in range(len(pares)):
-        for j in range(i+1,len(pares)):
-            niv_a,info_a=pares[i]; niv_b,info_b=pares[j]
-            diff=abs(info_a["z"]-info_b["z"])
-            if diff>=4.0 and np.sign(info_a["z"])!=np.sign(info_b["z"]):
-                return {"dispara":True,"analito":analito,
-                        "niv_a":niv_a,"niv_b":niv_b,
-                        "label_a":NIVELES.get(niv_a,NIVELES["N"])["label"],
-                        "label_b":NIVELES.get(niv_b,NIVELES["N"])["label"],
-                        "z_a":info_a["z"],"z_b":info_b["z"],"diferencia":round(diff,3),
-                        "valor_a":info_a["valor"],"valor_b":info_b["valor"],
-                        "media_a":info_a["media"],"media_b":info_b["media"],
-                        "sd_a":info_a["sd"],"sd_b":info_b["sd"]}
-    return None
-
-def render_r4s_alert(r4s):
-    st.markdown(f"""<div style="background:#FFFAFA;border:1.5px solid #FECACA;border-left:5px solid #E53E3E;
-         border-radius:12px;padding:18px 20px;margin-bottom:14px;box-shadow:0 2px 12px rgba(229,62,62,.08);">
-        <div style="font-size:15px;font-weight:700;color:#991B1B;margin-bottom:8px">⚡ Regla R-4s — Error aleatorio entre niveles</div>
-        <div style="font-size:13px;color:#7F1D1D;line-height:1.7">
-            <b>{r4s['analito']}</b>: nivel <b>{r4s['label_a']}</b> Z=<b>{r4s['z_a']:+.2f}σ</b>
-            vs nivel <b>{r4s['label_b']}</b> Z=<b>{r4s['z_b']:+.2f}σ</b><br>
-            Diferencia: <b>{r4s['diferencia']:.2f}σ</b> — indica <b>error aleatorio</b>.
-        </div></div>""", unsafe_allow_html=True)
-    c1,c2=st.columns(2)
-    with c1:
-        st.markdown(f"""<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px 16px;">
-            <div style="font-size:12px;font-weight:700;color:#991B1B;text-transform:uppercase;margin-bottom:8px">{r4s['label_a']}</div>
-            <div style="font-size:22px;font-weight:700;color:#E53E3E">{r4s['valor_a']}</div>
-            <div style="font-size:12px;color:#7F1D1D;margin-top:4px">Media:{r4s['media_a']} SD:{r4s['sd_a']} Z=<b>{r4s['z_a']:+.2f}σ</b></div>
-        </div>""", unsafe_allow_html=True)
-    with c2:
-        st.markdown(f"""<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 16px;">
-            <div style="font-size:12px;font-weight:700;color:#1D4ED8;text-transform:uppercase;margin-bottom:8px">{r4s['label_b']}</div>
-            <div style="font-size:22px;font-weight:700;color:#1A6FC4">{r4s['valor_b']}</div>
-            <div style="font-size:12px;color:#1E40AF;margin-top:4px">Media:{r4s['media_b']} SD:{r4s['sd_b']} Z=<b>{r4s['z_b']:+.2f}σ</b></div>
-        </div>""", unsafe_allow_html=True)
-    st.markdown("**Acción:** Repetir **ambos niveles** con viales nuevos · **No recalibrar** como primer paso · Documentar")
-
-def estado_badge(e):
-    cfg={"Verde":("badge-green","●"),"Ámbar":("badge-amber","▲"),"Rojo":("badge-red","■")}
-    cls,ico=cfg.get(e,("badge-green","●"))
-    return f'<span class="badge {cls}">{ico} {e}</span>'
-
+ESTADO_CLS = {"Verde": "estado-verde", "Ámbar": "estado-ambar", "Rojo": "estado-rojo"}
 
 # ==============================================================
-#  EWMA / CUSUM
+# SIDEBAR
 # ==============================================================
-def calcular_ewma(z_scores,lam=0.20):
-    n=len(z_scores)
-    if n==0: return {"ewma":[],"estados":[],"ultimo_ewma":0,"sigma_ewma":0,"inicio_deriva":None,"lim_warn":0,"lim_act":0}
-    sigma_ewma=(lam/(2-lam))**0.5; lim_warn=2.0*sigma_ewma; lim_act=3.0*sigma_ewma
-    ewma=[0.0]*n; estados=["Verde"]*n
-    ewma[0]=lam*z_scores[0]
-    for i in range(1,n): ewma[i]=lam*z_scores[i]+(1-lam)*ewma[i-1]
-    inicio_deriva=None
-    for i,e in enumerate(ewma):
-        if abs(e)>=lim_act:
-            estados[i]="Rojo"
-            if inicio_deriva is None: inicio_deriva=i
-        elif abs(e)>=lim_warn:
-            estados[i]="Ámbar"
-            if inicio_deriva is None: inicio_deriva=i
-    return {"ewma":ewma,"estados":estados,"ultimo_ewma":round(ewma[-1],4),
-            "sigma_ewma":round(sigma_ewma,4),"lim_warn":round(lim_warn,4),
-            "lim_act":round(lim_act,4),"inicio_deriva":inicio_deriva}
-
-def calcular_cusum(z_scores,k=0.5,h=5.0):
-    n=len(z_scores)
-    if n==0: return {"cusum_pos":[],"cusum_neg":[],"alarma_any":[],"primera_alarma":None,"max_cp":0,"max_cm":0,"tipo_deriva":None}
-    cp=[0.0]*n; cm=[0.0]*n; alarma=[False]*n
-    cp[0]=max(0,z_scores[0]-k); cm[0]=max(0,-z_scores[0]-k)
-    if cp[0]>h or cm[0]>h: alarma[0]=True
-    for i in range(1,n):
-        cp[i]=max(0,cp[i-1]+z_scores[i]-k); cm[i]=max(0,cm[i-1]-z_scores[i]-k)
-        if cp[i]>h or cm[i]>h: alarma[i]=True
-    primera=next((i for i,a in enumerate(alarma) if a),None)
-    tipo=None
-    if primera is not None: tipo="ascendente" if cp[primera]>h else "descendente"
-    return {"cusum_pos":cp,"cusum_neg":cm,"alarma_any":alarma,"primera_alarma":primera,
-            "max_cp":round(max(cp),3),"max_cm":round(max(cm),3),"tipo_deriva":tipo}
-
-def build_ewma_figure(fechas,z_scores,ewma_r,analito,nivel):
-    nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
-    lim_w=ewma_r["lim_warn"]; lim_a=ewma_r["lim_act"]
-    fig=go.Figure()
-    for y0,y1,col in [(lim_a,lim_a*2,"rgba(229,62,62,.08)"),(-lim_a*2,-lim_a,"rgba(229,62,62,.08)"),
-                       (lim_w,lim_a,"rgba(245,158,11,.07)"),(-lim_a,-lim_w,"rgba(245,158,11,.07)"),
-                       (-lim_w,lim_w,"rgba(13,158,110,.05)")]:
-        fig.add_hrect(y0=y0,y1=y1,fillcolor=col,line_width=0)
-    for y,col,dash,name in [(lim_a,"#E53E3E","dot",f"+3σ ({lim_a:.3f})"),(-lim_a,"#E53E3E","dot","-3σ"),
-                             (lim_w,"#F59E0B","dash",f"+2σ ({lim_w:.3f})"),(-lim_w,"#F59E0B","dash","-2σ"),
-                             (0,"#0D9E6E","solid","Media")]:
-        fig.add_hline(y=y,line_color=col,line_width=1.5,line_dash=dash,
-                      annotation_text=name,annotation_position="right",annotation_font=dict(color=col,size=10))
-    fig.add_trace(go.Scatter(x=fechas,y=z_scores,mode="lines",name="Z-Score",
-                             line=dict(color="#CBD5E1",width=1),opacity=0.6))
-    color_map={"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}
-    for estado in ["Verde","Ámbar","Rojo"]:
-        idx=[i for i,e in enumerate(ewma_r["estados"]) if e==estado]
-        if not idx: continue
-        fig.add_trace(go.Scatter(x=[fechas[i] for i in idx],y=[ewma_r["ewma"][i] for i in idx],
-            mode="markers+lines",name=f"EWMA {estado}",
-            marker=dict(size=7,color=color_map[estado],line=dict(color="#FFF",width=1)),
-            line=dict(color=color_map[estado],width=2)))
-    fig.update_layout(template="plotly_white",
-        title=dict(text=f"EWMA — {analito} · {nivel_label}",font=dict(size=13,color="#1C2B3A",family="Inter")),
-        paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
-        xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",tickformat="%d %b",title="Fecha"),
-        yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="EWMA (σ)"),
-        height=360,margin=dict(l=10,r=140,t=50,b=40),legend=dict(orientation="h",y=1.08,x=1,xanchor="right"))
-    return fig
-
-def build_cusum_figure(fechas,cusum_r,analito,nivel):
-    nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
-    fig=go.Figure()
-    fig.add_trace(go.Bar(x=fechas,y=cusum_r["cusum_pos"],name="C+ (↑)",
-        marker_color=["#E53E3E" if a else "#93C5FD" for a in cusum_r["alarma_any"]],opacity=0.85))
-    fig.add_trace(go.Bar(x=fechas,y=[-v for v in cusum_r["cusum_neg"]],name="C− (↓)",
-        marker_color=["#F59E0B" if a else "#6EE7B7" for a in cusum_r["alarma_any"]],opacity=0.85))
-    h_val=max(max(cusum_r["cusum_pos"]+[0]),5)
-    fig.add_hline(y=h_val,line_color="#E53E3E",line_width=1.5,line_dash="dash",
-                  annotation_text=f"h={h_val}",annotation_position="right",annotation_font=dict(color="#E53E3E",size=10))
-    fig.add_hline(y=-h_val,line_color="#F59E0B",line_width=1.5,line_dash="dash",
-                  annotation_text=f"-h={h_val}",annotation_position="right",annotation_font=dict(color="#F59E0B",size=10))
-    fig.update_layout(template="plotly_white",barmode="overlay",
-        title=dict(text=f"CUSUM — {analito} · {nivel_label}",font=dict(size=13,color="#1C2B3A",family="Inter")),
-        paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
-        xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",tickformat="%d %b",title="Fecha"),
-        yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="CUSUM (σ)"),
-        height=320,margin=dict(l=10,r=140,t=50,b=40),legend=dict(orientation="h",y=1.08,x=1,xanchor="right"))
-    return fig
-
-
-# ==============================================================
-#  SIGMA METRICS
-# ==============================================================
-TEA_CLIA = {
-    "Potasio (K+)":(8.0,"mmol/L","CLIA"),"ALT (Transaminasa)":(20.0,"U/L","CLIA"),
-    "Glucosa":(10.0,"mg/dL","CLIA"),"Sodio":(4.0,"mmol/L","CLIA"),
-    "Creatinina":(15.0,"mg/dL","CLIA"),"Colesterol":(10.0,"mg/dL","CLIA"),
-    "Hemoglobina":(7.0,"g/dL","CLIA"),"Calcio":(8.0,"mg/dL","CLIA"),
-    "Triglicéridos":(25.0,"mg/dL","CLIA"),"HDL-Colesterol":(30.0,"mg/dL","CLIA"),
-    "TSH":(25.0,"mIU/L","CLIA"),"T4 Libre (FT4)":(20.0,"ng/dL","CLIA"),
-    "AST":(20.0,"U/L","CLIA"),"GGT":(20.0,"U/L","CLIA"),"LDH":(20.0,"U/L","CLIA"),
-    "Amilasa":(30.0,"U/L","CLIA"),
-}
-TEA_DEFAULT=15.0
-
-def calcular_sigma(df_analito,tea_pct):
-    if df_analito.empty: return {}
-    media=df_analito["Media_Objetivo"].iloc[0]; sd=df_analito["SD_Objetivo"].iloc[0]; vals=df_analito["Valor"]
-    cv_pct=(sd/media)*100 if media!=0 else 0
-    sesgo_pct=abs((vals.mean()-media)/media)*100 if media!=0 else 0
-    sigma=(tea_pct-sesgo_pct)/cv_pct if cv_pct>0 else 0
-    if sigma>=6:   cat="Clase Mundial"; color="#0D9E6E"
-    elif sigma>=4: cat="Buena calidad"; color="#1A6FC4"
-    elif sigma>=3: cat="Aceptable";     color="#F59E0B"
-    else:          cat="Revisar metodo";color="#E53E3E"
-    return {"sigma":round(sigma,2),"cv_pct":round(cv_pct,2),"sesgo_pct":round(sesgo_pct,2),
-            "tea_pct":tea_pct,"categoria":cat,"color":color,"media":round(media,3),"sd":round(sd,4),"n":len(vals)}
-
-
-# ==============================================================
-#  LEVEY-JENNINGS
-# ==============================================================
-def build_lj_figure(df_series,analito,nivel):
-    u=df_series.iloc[-1]; m=u["Media_Objetivo"]; sd=u["SD_Objetivo"]
-    nivel_label=NIVELES.get(nivel,NIVELES["N"])["label"]
-    fig=go.Figure()
-    for y0,y1,col in [(m+2*sd,m+3*sd,"rgba(229,62,62,.10)"),(m-3*sd,m-2*sd,"rgba(229,62,62,.10)"),
-                       (m+sd,m+2*sd,"rgba(245,158,11,.08)"),(m-2*sd,m-sd,"rgba(245,158,11,.08)"),
-                       (m-sd,m+sd,"rgba(13,158,110,.06)")]:
-        fig.add_hrect(y0=y0,y1=y1,fillcolor=col,line_width=0)
-    for y_v,color,width,dash,name in [
-        (m,"#0D9E6E",2.0,"solid","Media"),(m+sd,"#94A3B8",1.0,"dash","+1 SD"),(m-sd,"#94A3B8",1.0,"dash","-1 SD"),
-        (m+2*sd,"#F59E0B",1.4,"dash","+2 SD"),(m-2*sd,"#F59E0B",1.4,"dash","-2 SD"),
-        (m+3*sd,"#E53E3E",1.8,"dot","+3 SD"),(m-3*sd,"#E53E3E",1.8,"dot","-3 SD"),
-    ]:
-        fig.add_hline(y=y_v,line_color=color,line_width=width,line_dash=dash,
-                      annotation_text=name,annotation_position="right",
-                      annotation_font=dict(color=color,size=10,family="Inter"))
-    fig.add_trace(go.Scatter(x=df_series["Fecha"],y=df_series["Valor"],mode="lines",
-                             line=dict(color="#CBD5E1",width=1.5),showlegend=False,hoverinfo="skip"))
-    for estado,color in [("Verde","#0D9E6E"),("Ámbar","#F59E0B"),("Rojo","#E53E3E")]:
-        sub=df_series[df_series["Estado"]==estado]
-        if sub.empty: continue
-        fig.add_trace(go.Scatter(x=sub["Fecha"],y=sub["Valor"],mode="markers",name=estado,
-                                 marker=dict(size=9,color=color,line=dict(color="#FFFFFF",width=1.5))))
-    fig.update_layout(template="plotly_white",
-        title=dict(text=f"Levey-Jennings — {analito} · {nivel_label}",font=dict(size=13,color="#1C2B3A",family="Inter")),
-        paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
-        legend=dict(orientation="h",y=1.08,x=1,xanchor="right"),
-        xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",tickformat="%d %b",title="Fecha"),
-        yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="Valor"),
-        height=380,width=760,margin=dict(l=10,r=110,t=55,b=40))
-    return fig
-
-def fig_to_png_bytes(fig):
-    try: return fig.to_image(format="png",scale=2)
-    except: return None
-
-
-# ==============================================================
-#  CSV EXPORT
-# ==============================================================
-def generar_csv(df_log,acciones_db,claves_log):
-    if df_log.empty: return b""
-    export=df_log.copy()
-    export["Fecha"]=export["Fecha"].dt.strftime("%d/%m/%Y")
-    export["Nivel_Label"]=export.get("_nivel_label",export["Nivel"].map(lambda n:NIVELES.get(n,NIVELES["N"])["label"]))
-    export["Accion_Completada"]=["Si" if acciones_db.get(k,False) else "No" for k in claves_log]
-    columnas={"Fecha":"Fecha","Analito":"Analito","Nivel_Label":"Nivel","Lote":"Lote",
-              "Valor":"Valor_Medido","Media_Objetivo":"Media_Objetivo","SD_Objetivo":"SD_Objetivo",
-              "Z_Score":"Z_Score","Regla_Violada":"Regla_Westgard",
-              "Score_Riesgo":"Score_Riesgo_100","Estado":"Estado","Accion_Completada":"Accion_Completada"}
-    cols_ok={k:v for k,v in columnas.items() if k in export.columns}
-    export=export[list(cols_ok.keys())].rename(columns=cols_ok)
-    if "Z_Score" in export.columns: export["Z_Score"]=export["Z_Score"].round(3)
-    return export.to_csv(index=False,encoding="utf-8-sig",sep=";").encode("utf-8-sig")
-
-
-# ==============================================================
-#  PDF
-# ==============================================================
-_PDF_REP={
-    "—":"-","–":"-","−":"-","±":"+/-","×":"x","÷":"/","σ":"sigma","μ":"u",
-    "→":"->","↑":"(+)","↓":"(-)","≥":">=","≤":"<=","≠":"!=","≈":"~","°":"o",
-    "\u2019":"'","\u201C":'"',"\u201D":'"',"🔴":"[ROJO]","🟡":"[AMBAR]",
-    "🟢":"[VERDE]","⚡":"[R-4s]","✅":"[OK]","⚠️":"[WARN]","❌":"[ERROR]",
-    "🏆":"[*]","📋":"","📄":"","📈":"","🔬":"","•":"-","·":".",
-}
-def pdf_txt(s):
-    for orig,repl in _PDF_REP.items(): s=s.replace(orig,repl)
-    return s.encode("latin-1",errors="replace").decode("latin-1")
-
-def generar_pdf(df_all,analitos,fuente,f_min=None,f_max=None,lab_nombre="LAB. CENTRAL"):
-    class PDF(FPDF):
-        def footer(self):
-            self.set_y(-13); self.set_font("Helvetica","I",8); self.set_text_color(100,116,139)
-            self.cell(0,10,f"Pagina {self.page_no()}/{{nb}}  |  AIQC v4.13  |  Uso interno",align="C")
-    pdf=PDF(); pdf.alias_nb_pages(); pdf.set_auto_page_break(auto=True,margin=20); pdf.add_page()
-    pdf.set_fill_color(26,111,196); pdf.rect(0,0,210,42,"F")
-    pdf.set_font("Helvetica","B",18); pdf.set_text_color(255,255,255); pdf.ln(8)
-    pdf.cell(0,10,"AIQC - Informe de Incidencias de Calidad",ln=True,align="C")
-    pdf.set_font("Helvetica","B",10); pdf.cell(0,6,pdf_txt(lab_nombre),ln=True,align="C")
-    pdf.set_font("Helvetica","",9); pdf.set_text_color(220,235,255)
-    periodo=f"  |  Periodo: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}" if f_min and f_max else ""
-    pdf.cell(0,6,pdf_txt(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}{periodo}  |  Fuente: {fuente}"),ln=True,align="C")
-    pdf.ln(12)
-    niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
-
-    def sec(txt):
-        pdf.set_font("Helvetica","B",12); pdf.set_text_color(26,111,196)
-        pdf.cell(0,8,pdf_txt(txt),ln=True)
-        pdf.set_draw_color(13,158,110); pdf.line(10,pdf.get_y(),200,pdf.get_y()); pdf.ln(3)
-
-    sec("1. Resumen Ejecutivo")
-    for niv in niveles_disponibles:
-        frames=[evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy()) for an in analitos]
-        df_ev=pd.concat([f for f in frames if not f.empty],ignore_index=True)
-        if df_ev.empty: continue
-        total=len(df_ev); rojos=int((df_ev["Estado"]=="Rojo").sum())
-        ambar=int((df_ev["Estado"]=="Ámbar").sum()); ok=int((df_ev["Estado"]=="Verde").sum())
-        pdf.set_font("Helvetica","B",10); pdf.set_text_color(28,43,58)
-        pdf.cell(0,7,pdf_txt(f"Nivel: {NIVELES.get(niv,NIVELES['N'])['label']}"),ln=True)
-        pdf.set_font("Helvetica","",9)
-        pdf.cell(0,6,pdf_txt(f"  Total: {total}  |  Verde: {ok} ({100*ok//total if total else 0}%)  |  Ambar: {ambar}  |  Rojo: {rojos}"),ln=True); pdf.ln(2)
-
-    sec("2. Semaforo de Estado")
-    sw=[52,30,22,22,22,22,18]; sh=["Analito","Nivel","Ultimo Valor","Media","SD","Z-Score","Estado"]
-    pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
-    for w,h in zip(sw,sh): pdf.cell(w,8,h,border=1,fill=True)
-    pdf.ln()
-    for an in analitos:
-        for niv in niveles_disponibles:
-            sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
-            if sub.empty: continue
-            u=sub.iloc[-1]; niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
-            if u["Estado"]=="Rojo":    pdf.set_fill_color(254,226,226); pdf.set_text_color(153,27,27)
-            elif u["Estado"]=="Ámbar": pdf.set_fill_color(254,243,199); pdf.set_text_color(146,64,14)
-            else:                       pdf.set_fill_color(209,250,229); pdf.set_text_color(6,95,70)
-            pdf.set_font("Helvetica","",8)
-            ico={"Rojo":"[R]","Ámbar":"[A]","Verde":"[V]"}.get(u["Estado"],"")
-            for w,v in zip(sw,[an[:24],niv_label[:14],str(u["Valor"]),str(u["Media_Objetivo"]),
-                               str(u["SD_Objetivo"]),pdf_txt(f"{u['Z_Score']:+.2f}"),f"{ico} {u['Estado']}"]):
-                pdf.cell(w,7,pdf_txt(str(v)),border=1,fill=True)
-            pdf.ln()
-    pdf.ln(6)
-
-    sec("3. Sigma Metrics (CLIA)")
-    sm_w=[46,28,18,18,18,18,42]; sm_h=["Analito","Nivel","TEa%","CV%","Sesgo%","Sigma","Categoria"]
-    pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105); pdf.set_font("Helvetica","B",8)
-    for w,h in zip(sm_w,sm_h): pdf.cell(w,8,h,border=1,fill=True)
-    pdf.ln()
-    for an in analitos:
-        for niv in niveles_disponibles:
-            sub=df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy()
-            if sub.empty: continue
-            tea=TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]; sig=calcular_sigma(sub,tea)
-            if not sig: continue
-            s=sig["sigma"]
-            if s>=6:   pdf.set_fill_color(209,250,229); pdf.set_text_color(6,95,70)
-            elif s>=4: pdf.set_fill_color(219,234,254); pdf.set_text_color(26,111,196)
-            elif s>=3: pdf.set_fill_color(254,243,199); pdf.set_text_color(146,64,14)
-            else:      pdf.set_fill_color(254,226,226); pdf.set_text_color(153,27,27)
-            pdf.set_font("Helvetica","",8); niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
-            for w,v in zip(sm_w,[an[:24],niv_label[:14],f"{sig['tea_pct']}%",f"{sig['cv_pct']}%",
-                                  f"{sig['sesgo_pct']}%",str(sig['sigma']),pdf_txt(sig['categoria'])]):
-                pdf.cell(w,7,pdf_txt(str(v)),border=1,fill=True)
-            pdf.ln()
-    pdf.ln(6)
-
-    sec("4. Graficos Levey-Jennings")
-    for an in analitos:
-        for niv in niveles_disponibles:
-            sub_ev=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
-            if sub_ev.empty: continue
-            fig=build_lj_figure(sub_ev,an,niv); png=fig_to_png_bytes(fig)
-            niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
-            if png:
-                tmp=f"/tmp/lj_{an.replace(' ','_').replace('(','').replace(')','_')}_{niv}.png"
-                open(tmp,"wb").write(png)
-                pdf.set_font("Helvetica","B",10); pdf.set_text_color(28,43,58)
-                pdf.cell(0,7,pdf_txt(f"{an} - {niv_label}"),ln=True)
-                pdf.image(tmp,x=10,w=190); pdf.ln(4)
-            else:
-                pdf.set_font("Helvetica","I",9); pdf.set_text_color(100,116,139)
-                pdf.cell(0,7,pdf_txt("[Grafico no disponible - instala kaleido]"),ln=True)
-
-    sec("5. R-4s")
-    hay_r4s=False
-    for an in analitos:
-        r4s=evaluar_r4s(df_all,an,f_min or df_all["Fecha"].min(),f_max or df_all["Fecha"].max())
-        if r4s:
-            hay_r4s=True; pdf.set_font("Helvetica","B",10); pdf.set_text_color(153,27,27)
-            pdf.cell(0,7,pdf_txt(f"[R-4s] {an}: {r4s['label_a']} Z={r4s['z_a']:+.2f} vs {r4s['label_b']} Z={r4s['z_b']:+.2f} | Diff={r4s['diferencia']:.2f}sigma"),ln=True)
-            pdf.set_font("Helvetica","",8); pdf.set_text_color(28,43,58)
-            pdf.multi_cell(0,5,pdf_txt("Accion: Repetir ambos niveles con viales nuevos. NO recalibrar.")); pdf.ln(2)
-    if not hay_r4s:
-        pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70); pdf.cell(0,7,pdf_txt("Sin alarmas R-4s."),ln=True)
-    pdf.ln(4)
-
-    sec("6. Guia Bio-Rad")
-    alarmas=set()
-    for an in analitos:
-        for niv in niveles_disponibles:
-            sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
-            if sub.empty: continue
-            u=sub.iloc[-1]
-            if u["Estado"]!="Verde" and an not in alarmas:
-                alarmas.add(an); kb=buscar_kb(an,u["Estado"])
-                if not kb: continue
-                niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
-                pdf.set_font("Helvetica","B",10)
-                pdf.set_text_color(153,27,27) if u["Estado"]=="Rojo" else pdf.set_text_color(146,64,14)
-                pdf.cell(0,7,pdf_txt(f"{'ROJO' if u['Estado']=='Rojo' else 'AMBAR'} - {an} [{niv_label}] - {u['Regla_Violada']}"),ln=True)
-                pdf.set_font("Helvetica","",8); pdf.set_text_color(28,43,58)
-                pdf.cell(0,5,pdf_txt(f"Producto: {kb['producto']}"),ln=True)
-                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Causas:",ln=True)
-                pdf.set_font("Helvetica","",8)
-                for c in kb["causas_comunes"][:3]: pdf.multi_cell(0,5,pdf_txt(f"  - {c}"))
-                pdf.set_font("Helvetica","B",8); pdf.cell(0,5,"Acciones:",ln=True)
-                pdf.set_font("Helvetica","",8)
-                for a in (kb["acciones_1_3s"] if u["Estado"]=="Rojo" else kb["acciones_warn"])[:4]:
-                    pdf.multi_cell(0,5,pdf_txt(f"  - {a}"))
-                pdf.cell(0,5,pdf_txt(f"Ref: {kb['referencia']}"),ln=True); pdf.ln(3)
-    if not alarmas:
-        pdf.set_font("Helvetica","I",9); pdf.set_text_color(6,95,70); pdf.cell(0,7,"Sin alarmas.",ln=True)
-
-    pdf.add_page(); sec("7. Registro de Validacion y Firma")
-    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
-    pdf.cell(0,6,pdf_txt(f"Informe AIQC v4.13  |  Fuente: {fuente}"),ln=True); pdf.ln(8)
-    fw=[65,65,60]; fh=["Elaborado por","Revisado por","Responsable de Calidad"]
-    pdf.set_font("Helvetica","B",9); pdf.set_fill_color(240,242,245); pdf.set_text_color(71,85,105)
-    for w,h in zip(fw,fh): pdf.cell(w,8,h,border=1,fill=True)
-    pdf.ln()
-    for w in fw: pdf.cell(w,22,"",border=1)
-    pdf.ln()
-    pdf.set_font("Helvetica","",8); pdf.set_text_color(100,116,139)
-    for w in fw: pdf.cell(w,6,"Nombre y firma",border="LRB",align="C")
-    pdf.ln(10)
-    pdf.set_font("Helvetica","",9); pdf.set_text_color(28,43,58)
-    pdf.cell(65,8,pdf_txt(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}"),border=1)
-    if f_min and f_max: pdf.cell(125,8,pdf_txt(f"Periodo: {f_min.strftime('%d/%m/%Y')} - {f_max.strftime('%d/%m/%Y')}"),border=1)
-    pdf.ln(10)
-    pdf.set_font("Helvetica","I",8); pdf.set_text_color(100,116,139)
-    pdf.multi_cell(0,5,pdf_txt("Confidencial · Uso interno · ISO 15189:2022"))
-    return bytes(pdf.output())
-
-
-# ==============================================================
-#  ASISTENTE IA GEMINI
-# ==============================================================
-_SALUDOS={
-    "hola","buenas","buenos días","buenos dias","buenas tardes","buenas noches",
-    "hey","hi","hello","ey","gracias","muchas gracias","de nada","ok","vale",
-    "perfecto","genial","entendido","de acuerdo","claro","bien","muy bien",
-    "adiós","adios","hasta luego","bye","chao","¿cómo estás?","como estas",
-    "¿qué tal?","que tal","¿quién eres?","quien eres","¿qué eres?","que eres",
-    "¿qué puedes hacer?","que puedes hacer","ayuda","help",
-}
-_PALABRAS_QC={
-    "analito","control","qc","westgard","alarma","alerta","zscore","z-score",
-    "levey","jennings","ewma","cusum","sigma","cv","sd","media","valor","resultado",
-    "regla","deriva","tendencia","calibr","reactivo","potasio","sodio","glucosa",
-    "alt","ast","creatinina","colesterol","hemoglobina","amilasa","r-4s","r4s",
-    "1_3s","2_2s","4_1s","10_x","bio-rad","biorad","lote","nivel","normal",
-    "patológico","patologico","informe","pdf","csv","exportar","incidencia",
-    "laboratorio","analisis","análisis","muestra","paciente","clinico","clínico",
-    "cobas","openlab","ise","fotométrico","fotometrico","pipeta","bandeja","verde",
-    "calibracion","calibración","mantenimiento","interlock","electrodo","absorbancia","enzima",
-}
-
-def _necesita_datos_qc(pregunta):
-    texto=pregunta.strip().lower().rstrip(".,!?¿¡ ")
-    if texto in _SALUDOS: return False
-    palabras=texto.split()
-    if len(palabras)<=3 and not any(t in texto for t in _PALABRAS_QC): return False
-    if not any(t in texto for t in _PALABRAS_QC): return False
-    return True
-
-MAX_TURNS=10
-
-def ia_responde_gemini(pregunta,historial,df_all,analitos_ls,f_min,f_max):
-    api_key=get_api_key()
-    if not api_key: return "❌ **API Key de Gemini no configurada.**"
-    genai.configure(api_key=api_key)
-    niveles_disponibles=sorted(df_all["Nivel"].unique()) if "Nivel" in df_all.columns else ["N"]
-    if _necesita_datos_qc(pregunta):
-        resumen=[]
-        for an in analitos_ls:
-            for niv in niveles_disponibles:
-                sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)&
-                    (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy())
-                if sub.empty: continue
-                u=sub.iloc[-1]; z_calc=(u["Valor"]-u["Media_Objetivo"])/u["SD_Objetivo"]
-                tea=TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]; sig=calcular_sigma(sub,tea)
-                niv_label=NIVELES.get(niv,NIVELES["N"])["label"]
-                kb=buscar_kb(an,u["Estado"]); kb_txt=""
-                if kb and u["Estado"]!="Verde":
-                    kb_txt=(f"\n  - Bio-Rad causas: {'; '.join(kb['causas_comunes'][:2])}"
-                            f"\n  - Bio-Rad acciones: {'; '.join((kb['acciones_1_3s'] if u['Estado']=='Rojo' else kb['acciones_warn'])[:2])}")
-                resumen.append(f"• {an} | Nivel: {niv_label}\n"
-                               f"  - Valor:{u['Valor']} Media:{u['Media_Objetivo']} SD:{u['SD_Objetivo']}\n"
-                               f"  - Z={z_calc:+.3f} Estado:{u['Estado']} Regla:{u['Regla_Violada']} Score:{int(u['Score_Riesgo'])}/100\n"
-                               f"  - Sigma:{sig.get('sigma','N/A')}sigma CV:{sig.get('cv_pct','N/A')}%{kb_txt}")
-        r4s_lines=[]
-        for an in analitos_ls:
-            r4s=evaluar_r4s(df_all,an,f_min,f_max)
-            if r4s: r4s_lines.append(f"  [R-4s] {an}: {r4s['label_a']} Z={r4s['z_a']:+.2f} vs {r4s['label_b']} Z={r4s['z_b']:+.2f}")
-        r4s_sec=("=== ALARMAS R-4s ===\n"+"\n".join(r4s_lines)+"\n\n") if r4s_lines else ""
-        contexto=(f"=== DATOS REALES ({f_min} - {f_max}) ===\n{chr(10).join(resumen)}\n\n"
-                  f"{r4s_sec}=== COBAS 8000 MANUAL ===\n{COBAS_8000_KB}\n\n"
-                  f"=== REGLAS WESTGARD ===\n{REGLAS_DESC}\n\n=== PREGUNTA ===\n{pregunta}")
-    else:
-        contexto=f"=== PREGUNTA ===\n{pregunta}"
-    recent=historial[1:][-MAX_TURNS*2:]
-    gemini_hist=[{"role":"user" if m["role"]=="user" else "model","parts":[m["content"]]} for m in recent]
-    last_error=""
-    for model_name in GEMINI_MODELS:
-        try:
-            m=genai.GenerativeModel(model_name=model_name,generation_config=GEMINI_CFG,system_instruction=GEMINI_SYSTEM)
-            chat=m.start_chat(history=gemini_hist); resp=chat.send_message(contexto)
-            st.session_state["gemini_model_active"]=model_name; return resp.text
-        except Exception as e:
-            last_error=str(e)
-            if "api_key" in last_error.lower() or "403" in last_error: return "❌ API Key inválida."
-            continue
-    return f"⚠️ Modelos no disponibles.\n\n_Error: {last_error}_"
-
-
-# ==============================================================
-#  SIDEBAR
-# ==============================================================
-_auto_refresh_github()
-
+auto_refresh_github()
 with st.sidebar:
     st.markdown('<div class="sb-logo">🔬</div>', unsafe_allow_html=True)
     st.markdown('<div class="sb-title">AIQC</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sb-sub">Quality Control · v4.13 · OpenLab + cobas 8000</div>', unsafe_allow_html=True)
-    rol_badge_css={"admin":"role-admin","supervisor":"role-supervisor","tecnico":"role-tecnico"}.get(rol_actual,"role-tecnico")
-    st.markdown(f'<div style="text-align:center;margin-bottom:12px">'
-                f'<span style="color:#94A3B8;font-size:.78rem">👤 {usuario_sesion.get("nombre","") or usuario_actual}</span>'
-                f'&nbsp;<span class="{rol_badge_css}">{rol_actual.upper()}</span></div>',unsafe_allow_html=True)
+    st.markdown(
+        '<div class="sb-sub">Quality Control · v4.13 · OpenLab + cobas 8000</div>',
+        unsafe_allow_html=True,
+    )
+    rol_badge_css = {
+        "admin": "role-admin",
+        "supervisor": "role-supervisor",
+        "tecnico": "role-tecnico",
+    }.get(rol_actual, "role-tecnico")
+    st.markdown(
+        f'<div style="text-align:center;margin-bottom:12px">'
+        f'<span style="color:#94A3B8;font-size:.78rem">👤 '
+        f'{usuario_sesion.get("nombre", "") or usuario_actual}</span>'
+        f'&nbsp;<span class="{rol_badge_css}">{rol_actual.upper()}</span></div>',
+        unsafe_allow_html=True,
+    )
     st.markdown("---")
     st.markdown("**📂 Fuente de datos**")
-    tab_src1,tab_src2=st.tabs(["📤 Subir archivo","☁️ GitHub / OpenLab"])
+    tab_src1, tab_src2 = st.tabs(["📤 Subir archivo", "☁ GitHub / OpenLab"])
 
     with tab_src1:
-        uploaded=st.file_uploader("CSV o Excel",type=["csv","xlsx","xls"],
+        uploaded = st.file_uploader(
+            "CSV o Excel",
+            type=["csv", "xlsx", "xls"],
             help="Columnas: Fecha, Analito, Nivel (N/PB/PA), Valor, Media_Objetivo, SD_Objetivo, Lote.",
-            key="uploader_manual")
+            key="uploader_manual",
+        )
         if uploaded:
-            df_cargado,err=leer_archivo(uploaded)
+            df_cargado, err = leer_archivo(uploaded)
             if df_cargado is not None:
-                st.session_state["df_manual"]=df_cargado
-                st.session_state["data_src_manual"]=f"📄 {uploaded.name}"
-                registrar_auditoria(db_con,usuario_actual,"CARGA_ARCHIVO",uploaded.name)
-                st.markdown(f'<div class="data-pill">✅ <b>{uploaded.name}</b><br>'
-                            f'{len(df_cargado)} filas · {df_cargado["Analito"].nunique()} analito(s)</div>',
-                            unsafe_allow_html=True)
-            else: st.error(err)
+                st.session_state["df_manual"] = df_cargado
+                st.session_state["data_src_manual"] = f"📄 {uploaded.name}"
+                registrar_auditoria(db_con, usuario_actual, "CARGA_ARCHIVO", uploaded.name)
+                st.markdown(
+                    f'<div class="data-pill">✅ <b>{uploaded.name}</b><br>'
+                    f'{len(df_cargado)} filas · {df_cargado["Analito"].nunique()} analito(s)</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.error(err)
 
     with tab_src2:
-        cfg_gh=st.secrets.get("github",{}); tiene_config=bool(cfg_gh.get("usuario") and cfg_gh.get("repo") and cfg_gh.get("archivo"))
+        cfg_gh = get_section("github")
+        tiene_config = bool(cfg_gh.get("usuario") and cfg_gh.get("repo") and cfg_gh.get("archivo"))
         if not tiene_config:
             st.warning("Configura `[github]` en `.streamlit/secrets.toml`.")
         else:
-            ultima_sync=st.session_state.get("github_last_sync")
-            msg_gh=st.session_state.get("data_src_github","Sin sincronizar aún")
+            ultima_sync = st.session_state.get("github_last_sync")
+            msg_gh = st.session_state.get("data_src_github", "Sin sincronizar aún")
             if ultima_sync:
-                st.markdown(f'<div class="sync-pill">☁️ <b>OpenLab · GitHub</b><br>{msg_gh}</div>',unsafe_allow_html=True)
+                st.markdown(
+                    f'<div class="sync-pill">☁ <b>OpenLab · GitHub</b><br>{msg_gh}</div>',
+                    unsafe_allow_html=True,
+                )
             else:
                 st.caption("Pulsa para cargar datos desde OpenLab vía GitHub.")
-            if st.button("🔄 Sincronizar ahora",use_container_width=True,type="primary",key="btn_sync_gh"):
+            if st.button(
+                "🔄 Sincronizar ahora", use_container_width=True, type="primary", key="btn_sync_gh"
+            ):
                 with st.spinner("Conectando con GitHub…"):
-                    df_gh,msg=leer_csv_github()
-                    if df_gh is not None:
-                        st.session_state["df_github"]=df_gh
-                        st.session_state["data_src_github"]=msg
-                        st.session_state["github_last_sync"]=datetime.now()
-                        registrar_auditoria(db_con,usuario_actual,"SYNC_GITHUB",msg)
-                        st.success(msg); st.rerun()
-                    else: st.error(msg)
-            auto_sync=st.checkbox("Auto-sincronizar al iniciar",key="auto_sync_gh",
-                                   help="Recarga datos automáticamente cada 60 min desde GitHub")
+                    df_gh, msg = leer_csv_github()
+                if df_gh is not None:
+                    st.session_state["df_github"] = df_gh
+                    st.session_state["data_src_github"] = msg
+                    st.session_state["github_last_sync"] = datetime.now()
+                    registrar_auditoria(db_con, usuario_actual, "SYNC_GITHUB", msg)
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+            auto_sync = st.checkbox(
+                "Auto-sincronizar al iniciar",
+                key="auto_sync_gh",
+                help="Recarga datos automáticamente cada 60 min desde GitHub",
+            )
             if auto_sync and st.session_state.get("df_github") is None:
                 with st.spinner("Cargando datos OpenLab desde GitHub…"):
-                    df_gh,msg=leer_csv_github()
-                    if df_gh is not None:
-                        st.session_state["df_github"]=df_gh
-                        st.session_state["data_src_github"]=msg
-                        st.session_state["github_last_sync"]=datetime.now()
-                        st.rerun()
+                    df_gh, msg = leer_csv_github()
+                if df_gh is not None:
+                    st.session_state["df_github"] = df_gh
+                    st.session_state["data_src_github"] = msg
+                    st.session_state["github_last_sync"] = datetime.now()
+                    st.rerun()
 
     st.markdown("---")
 
     # Prioridad: GitHub > Manual > Demo
-    df_github=st.session_state.get("df_github")
-    df_manual=st.session_state.get("df_manual")
+    df_github = st.session_state.get("df_github")
+    df_manual = st.session_state.get("df_manual")
     if df_github is not None:
-        df_all=df_github; data_src="☁️ OpenLab·GitHub"
+        df_all = df_github
+        data_src = "☁ OpenLab·GitHub"
     elif df_manual is not None:
-        df_all=df_manual; data_src=st.session_state.get("data_src_manual","📄 Archivo")
+        df_all = df_manual
+        data_src = st.session_state.get("data_src_manual", "📄 Archivo")
     else:
-        df_all=build_demo(); data_src="🔬 Modo Demo"
-        st.markdown("""
+        df_all = build_demo()
+        data_src = "🔬 Modo Demo"
+        st.markdown(
+            """
         <div style="background:linear-gradient(135deg,#1A6FC4,#0D9E6E);
-                    border-radius:10px;padding:12px 14px;margin-bottom:8px">
-            <div style="color:#FFFFFF;font-weight:700;font-size:.85rem">🔬 MODO DEMO ACTIVO</div>
-            <div style="color:rgba(255,255,255,.85);font-size:.75rem;margin-top:3px">
-                Datos simulados de Amilasa y ALT.<br>
-                En producción conecta con OpenLab vía GitHub.
-            </div>
+        border-radius:10px;padding:12px 14px;margin-bottom:8px">
+        <div style="color:#FFFFFF;font-weight:700;font-size:.85rem">🔬 MODO DEMO ACTIVO</div>
+        <div style="color:rgba(255,255,255,.85);font-size:.75rem;margin-top:3px">
+        Datos simulados de Amilasa y ALT.<br>
+        En producción conecta con OpenLab vía GitHub.
         </div>
-        """, unsafe_allow_html=True)
-        if st.button("🔄 Reiniciar demo",use_container_width=True,key="btn_reset_demo"):
-            st.cache_data.clear(); st.rerun()
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+        if st.button("🔄 Reiniciar demo", use_container_width=True, key="btn_reset_demo"):
+            st.cache_data.clear()
+            st.rerun()
 
-    analito=st.selectbox("Analito activo",options=sorted(df_all["Analito"].unique()),key="sel_analito")
-    niveles_analito=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
-    nivel_options={NIVELES.get(n,NIVELES["N"])["label"]:n for n in niveles_analito}
-    nivel_sel_label=st.selectbox("Nivel de control",options=list(nivel_options.keys()),key="sel_nivel",
-                                  help="N=Normal · PB=Patológico Bajo · PA=Patológico Alto")
-    nivel_activo=nivel_options[nivel_sel_label]
+    analito = st.selectbox(
+        "Analito activo", options=sorted(df_all["Analito"].unique()), key="sel_analito"
+    )
+    niveles_analito = sorted(df_all[df_all["Analito"] == analito]["Nivel"].unique())
+    nivel_options = {NIVELES.get(n, NIVELES["N"])["label"]: n for n in niveles_analito}
+    nivel_sel_label = st.selectbox(
+        "Nivel de control",
+        options=list(nivel_options.keys()),
+        key="sel_nivel",
+        help="N=Normal · PB=Patológico Bajo · PA=Patológico Alto",
+    )
+    nivel_activo = nivel_options[nivel_sel_label]
 
-    fechas_d=sorted(df_all["Fecha"].dropna().unique())
-    if len(fechas_d)>=2:
-        f_min=st.date_input("Desde",value=pd.Timestamp(fechas_d[0]).date(),
-                            min_value=pd.Timestamp(fechas_d[0]).date(),max_value=pd.Timestamp(fechas_d[-1]).date(),key="f1")
-        f_max=st.date_input("Hasta",value=pd.Timestamp(fechas_d[-1]).date(),
-                            min_value=pd.Timestamp(fechas_d[0]).date(),max_value=pd.Timestamp(fechas_d[-1]).date(),key="f2")
+    fechas_d = sorted(df_all["Fecha"].dropna().unique())
+    if len(fechas_d) >= 2:
+        f_min = st.date_input(
+            "Desde",
+            value=pd.Timestamp(fechas_d[0]).date(),
+            min_value=pd.Timestamp(fechas_d[0]).date(),
+            max_value=pd.Timestamp(fechas_d[-1]).date(),
+            key="f1",
+        )
+        f_max = st.date_input(
+            "Hasta",
+            value=pd.Timestamp(fechas_d[-1]).date(),
+            min_value=pd.Timestamp(fechas_d[0]).date(),
+            max_value=pd.Timestamp(fechas_d[-1]).date(),
+            key="f2",
+        )
     else:
-        f_min=f_max=pd.Timestamp(fechas_d[0]).date() if fechas_d else datetime.today().date()
+        f_min = f_max = pd.Timestamp(fechas_d[0]).date() if fechas_d else datetime.today().date()
 
     st.markdown("---")
     st.markdown("**Estado del laboratorio**")
     for an in sorted(df_all["Analito"].unique()):
-        for niv in sorted(df_all[df_all["Analito"]==an]["Nivel"].unique()):
-            sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)].copy())
-            est=sub.iloc[-1]["Estado"]; led={"Verde":"🟢","Ámbar":"🟡","Rojo":"🔴"}.get(est,"⚪")
-            st.markdown(f"{led} **{an}** · {NIVELES.get(niv,NIVELES['N'])['label']} — {est}")
-        r4s_sb=evaluar_r4s(df_all,an,f_min,f_max)
-        if r4s_sb: st.markdown(f"⚡ **{an}** · R-4s: {r4s_sb['label_a']} vs {r4s_sb['label_b']}")
+        for niv in sorted(df_all[df_all["Analito"] == an]["Nivel"].unique()):
+            sub = evaluar_westgard(
+                df_all[(df_all["Analito"] == an) & (df_all["Nivel"] == niv)].copy()
+            )
+            est = sub.iloc[-1]["Estado"]
+            led = {"Verde": "🟢", "Ámbar": "🟡", "Rojo": "🔴"}.get(est, "⚪")
+            st.markdown(f"{led} **{an}** · {NIVELES.get(niv, NIVELES['N'])['label']} — {est}")
+        r4s_sb = evaluar_r4s(df_all, an, f_min, f_max)
+        if r4s_sb:
+            st.markdown(f"⚡ **{an}** · R-4s: {r4s_sb['label_a']} vs {r4s_sb['label_b']}")
 
     st.markdown("---")
-    if st.button("Cerrar sesión",use_container_width=True):
-        registrar_auditoria(db_con,usuario_actual,"LOGOUT","")
-        st.session_state["auth"]=False; st.session_state["usuario"]=None; st.rerun()
+    if st.button("Cerrar sesión", use_container_width=True):
+        registrar_auditoria(db_con, usuario_actual, "LOGOUT", "")
+        st.session_state["auth"] = False
+        st.session_state["usuario"] = None
+        st.rerun()
     st.caption(f"Fuente: {data_src}")
 
+# ==============================================================
+# DATOS ACTIVOS
+# ==============================================================
+df_raw = df_all[
+    (df_all["Analito"] == analito)
+    & (df_all["Nivel"] == nivel_activo)
+    & (df_all["Fecha"] >= pd.Timestamp(f_min))
+    & (df_all["Fecha"] <= pd.Timestamp(f_max))
+].copy()
+df_series = evaluar_westgard(df_raw)
+ultima = df_series.iloc[-1] if not df_series.empty else None
+analitos_ls = sorted(df_all["Analito"].unique())
+r4s_result = evaluar_r4s(df_all, analito, f_min, f_max)
+estado_actual = ultima["Estado"] if ultima is not None else "Verde"
 
 # ==============================================================
-#  DATOS ACTIVOS
+# CABECERA
 # ==============================================================
-df_raw=df_all[(df_all["Analito"]==analito)&(df_all["Nivel"]==nivel_activo)&
-              (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy()
-df_series=evaluar_westgard(df_raw)
-ultima=df_series.iloc[-1] if not df_series.empty else None
-analitos_ls=sorted(df_all["Analito"].unique())
-ESTADO_CLS={"Verde":"estado-verde","Ámbar":"estado-ambar","Rojo":"estado-rojo"}
-r4s_result=evaluar_r4s(df_all,analito,f_min,f_max)
-estado_actual=ultima["Estado"] if ultima is not None else "Verde"
-
-
-# ==============================================================
-#  CABECERA
-# ==============================================================
-st.markdown(f"""
+st.markdown(
+    f"""
 <div class="aiqc-header">
-  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-    <div>
-      <h2>🔬 AIQC – Control de Calidad</h2>
-      <div class="meta">
-        <b>Fuente:</b> {data_src} &nbsp;·&nbsp;
-        <b>Período:</b> {f_min.strftime('%d/%m/%Y')} → {f_max.strftime('%d/%m/%Y')}
-        &nbsp;·&nbsp; <b>Usuario:</b> {usuario_actual}
-      </div>
-    </div>
-    <div style="font-size:1.1rem">{estado_badge(estado_actual)}</div>
-  </div>
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+<div>
+<h2>🔬 AIQC – Control de Calidad</h2>
+<div class="meta">
+<b>Fuente:</b> {data_src} &nbsp;·&nbsp;
+<b>Período:</b> {f_min.strftime('%d/%m/%Y')} → {f_max.strftime('%d/%m/%Y')}
+&nbsp;·&nbsp; <b>Usuario:</b> {usuario_actual}
 </div>
-""", unsafe_allow_html=True)
+</div>
+<div style="font-size:1.1rem">{estado_badge(estado_actual)}</div>
+</div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # ==============================================================
-#  BARRA DE CONTROLES RÁPIDOS
-#  Siempre visible aunque el sidebar esté cerrado
+# BARRA DE CONTROLES RÁPIDOS (siempre visible)
 # ==============================================================
 st.markdown('<div class="quick-bar">', unsafe_allow_html=True)
-qc1,qc2,qc3,qc4,qc5=st.columns([2,1.5,1.5,1.5,1.5])
+qc1, qc2, qc3, qc4, qc5 = st.columns([2, 1.5, 1.5, 1.5, 1.5])
 with qc1:
-    analito_q=st.selectbox("Analito",options=sorted(df_all["Analito"].unique()),
+    analito_q = st.selectbox(
+        "Analito",
+        options=sorted(df_all["Analito"].unique()),
         index=sorted(df_all["Analito"].unique()).index(analito),
-        key="q_analito",label_visibility="collapsed")
-    if analito_q!=analito:
-        st.session_state["sel_analito"]=analito_q; st.rerun()
+        key="q_analito",
+        label_visibility="collapsed",
+    )
+    if analito_q != analito:
+        st.session_state["sel_analito"] = analito_q
+        st.rerun()
 with qc2:
-    niveles_q=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
-    labels_q=[NIVELES.get(n,NIVELES["N"])["label"] for n in niveles_q]
-    label_actual=NIVELES.get(nivel_activo,NIVELES["N"])["label"]
-    idx_q=labels_q.index(label_actual) if label_actual in labels_q else 0
-    nivel_q=st.selectbox("Nivel",options=labels_q,index=idx_q,
-        key="q_nivel",label_visibility="collapsed")
-    nivel_cod_q={NIVELES.get(n,NIVELES["N"])["label"]:n for n in niveles_q}.get(nivel_q,"N")
-    if nivel_cod_q!=nivel_activo:
-        st.session_state["sel_nivel"]=nivel_q; st.rerun()
+    niveles_q = sorted(df_all[df_all["Analito"] == analito]["Nivel"].unique())
+    labels_q = [NIVELES.get(n, NIVELES["N"])["label"] for n in niveles_q]
+    label_actual = NIVELES.get(nivel_activo, NIVELES["N"])["label"]
+    idx_q = labels_q.index(label_actual) if label_actual in labels_q else 0
+    nivel_q = st.selectbox(
+        "Nivel", options=labels_q, index=idx_q, key="q_nivel", label_visibility="collapsed"
+    )
+    nivel_cod_q = {NIVELES.get(n, NIVELES["N"])["label"]: n for n in niveles_q}.get(nivel_q, "N")
+    if nivel_cod_q != nivel_activo:
+        st.session_state["sel_nivel"] = nivel_q
+        st.rerun()
 with qc3:
-    fmin_q=st.date_input("Desde",value=f_min,
+    fmin_q = st.date_input(
+        "Desde",
+        value=f_min,
         min_value=pd.Timestamp(fechas_d[0]).date() if fechas_d else None,
         max_value=pd.Timestamp(fechas_d[-1]).date() if fechas_d else None,
-        key="q_f1",label_visibility="collapsed")
-    if fmin_q!=f_min:
-        st.session_state["f1"]=fmin_q; st.rerun()
+        key="q_f1",
+        label_visibility="collapsed",
+    )
+    if fmin_q != f_min:
+        st.session_state["f1"] = fmin_q
+        st.rerun()
 with qc4:
-    fmax_q=st.date_input("Hasta",value=f_max,
+    fmax_q = st.date_input(
+        "Hasta",
+        value=f_max,
         min_value=pd.Timestamp(fechas_d[0]).date() if fechas_d else None,
         max_value=pd.Timestamp(fechas_d[-1]).date() if fechas_d else None,
-        key="q_f2",label_visibility="collapsed")
-    if fmax_q!=f_max:
-        st.session_state["f2"]=fmax_q; st.rerun()
+        key="q_f2",
+        label_visibility="collapsed",
+    )
+    if fmax_q != f_max:
+        st.session_state["f2"] = fmax_q
+        st.rerun()
 with qc5:
-    st.markdown(f'<div style="padding-top:6px;text-align:center">{nivel_badge(nivel_activo)}</div>',
-                unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="padding-top:6px;text-align:center">{nivel_badge(nivel_activo)}</div>',
+        unsafe_allow_html=True,
+    )
+st.markdown("</div>", unsafe_allow_html=True)
 
 # Banner demo
-if data_src=="🔬 Modo Demo":
-    st.markdown("""
+if data_src == "🔬 Modo Demo":
+    st.markdown(
+        """
     <div style="background:linear-gradient(135deg,#EFF6FF,#ECFDF5);
-                border:1.5px solid #BFDBFE;border-radius:12px;
-                padding:14px 20px;margin-bottom:20px;
-                display:flex;align-items:center;gap:14px">
-        <div style="font-size:2rem">🔬</div>
-        <div>
-            <div style="font-weight:700;color:#1A6FC4;font-size:.95rem">Modo demostración activo</div>
-            <div style="color:#475569;font-size:.83rem;margin-top:2px">
-                Datos <b>simulados</b> de Amilasa (N, PB, PA) y ALT con alarmas reales de Westgard.
-                En producción los datos se cargan automáticamente desde
-                <b>OpenLab → GitHub → App</b> en tiempo real.
-            </div>
-        </div>
+    border:1.5px solid #BFDBFE;border-radius:12px;
+    padding:14px 20px;margin-bottom:20px;
+    display:flex;align-items:center;gap:14px">
+    <div style="font-size:2rem">🔬</div>
+    <div>
+    <div style="font-weight:700;color:#1A6FC4;font-size:.95rem">Modo demostración activo</div>
+    <div style="color:#475569;font-size:.83rem;margin-top:2px">
+    Datos <b>simulados</b> de Amilasa (N, PB, PA) y ALT con alarmas reales de Westgard.
+    En producción los datos se cargan automáticamente desde
+    <b>OpenLab → GitHub → App</b> en tiempo real.
     </div>
-    """, unsafe_allow_html=True)
-
+    </div>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
 
 # ==============================================================
-#  TABS
+# TABS
 # ==============================================================
-tab_dash,tab_ewma,tab_sigma,tab_biorad,tab_chat,tab_log,tab_usuarios,tab_cfg=st.tabs([
-    "📊  Dashboard","📉  EWMA/CUSUM","📈  Sigma Metrics",
-    "📋  Guía Bio-Rad","🤖  Asistente IA","📝  Registro",
-    "👥  Usuarios","⚙️  Configuración",
-])
-
+tab_dash, tab_ewma, tab_sigma, tab_biorad, tab_chat, tab_log, tab_usuarios, tab_cfg = st.tabs(
+    [
+        "📊 Dashboard",
+        "📉 EWMA/CUSUM",
+        "📈 Sigma Metrics",
+        "📋 Guía Bio-Rad",
+        "🤖 Asistente IA",
+        "📝 Registro",
+        "👥 Usuarios",
+        "⚙ Configuración",
+    ]
+)
 
 # ── TAB 1: DASHBOARD ─────────────────────────────────────────
 with tab_dash:
     if df_series.empty or ultima is None:
         st.warning("No hay datos para el analito/nivel/rango seleccionado.")
     else:
-        score=int(ultima["Score_Riesgo"]); zscore=round(ultima["Z_Score"],2)
-        risk_c={"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}.get(ultima["Estado"],"#0D9E6E")
-        estado_cls=ESTADO_CLS.get(ultima["Estado"],"")
-        k1,k2,k3,k4,k5=st.columns(5)
-        for col,val,lbl,color,sub in [
-            (k1,f"{ultima['Valor']}","Valor Actual","#1A6FC4","Última medición"),
-            (k2,f"{ultima['Media_Objetivo']}","Media Objetivo","#4F6FA8","μ objetivo"),
-            (k3,f"±{ultima['SD_Objetivo']}","SD Objetivo","#6B5CA5","σ objetivo"),
-            (k4,f"{zscore:+.2f}σ","Z-Score","#E53E3E" if abs(zscore)>=2 else "#0D9E6E","Z=(x-μ)/σ"),
-            (k5,f"{score}/100","Score de Riesgo",risk_c,ultima["Estado"]),
+        score = int(ultima["Score_Riesgo"])
+        zscore = round(ultima["Z_Score"], 2)
+        risk_c = {"Verde": "#0D9E6E", "Ámbar": "#F59E0B", "Rojo": "#E53E3E"}.get(
+            ultima["Estado"], "#0D9E6E"
+        )
+        estado_cls = ESTADO_CLS.get(ultima["Estado"], "")
+        k1, k2, k3, k4, k5 = st.columns(5)
+        for col, val, lbl, color, sub in [
+            (k1, f"{ultima['Valor']}", "Valor Actual", "#1A6FC4", "Última medición"),
+            (k2, f"{ultima['Media_Objetivo']}", "Media Objetivo", "#4F6FA8", "μ objetivo"),
+            (k3, f"±{ultima['SD_Objetivo']}", "SD Objetivo", "#6B5CA5", "σ objetivo"),
+            (
+                k4,
+                f"{zscore:+.2f}σ",
+                "Z-Score",
+                "#E53E3E" if abs(zscore) >= 2 else "#0D9E6E",
+                "Z=(x-μ)/σ",
+            ),
+            (k5, f"{score}/100", "Score de Riesgo", risk_c, ultima["Estado"]),
         ]:
             with col:
-                st.markdown(f'<div class="kpi-card {estado_cls}"><div class="kpi-val" style="color:{color}">{val}</div>'
-                            f'<div class="kpi-lbl">{lbl}</div><div class="kpi-sub">{sub}</div></div>',unsafe_allow_html=True)
-
-        if r4s_result: st.markdown("<br>",unsafe_allow_html=True); render_r4s_alert(r4s_result)
-        if ultima["Estado"]!="Verde":
-            st.markdown("<br>",unsafe_allow_html=True)
-            render_kb_panel(analito,ultima["Estado"],ultima["Regla_Violada"],nivel_activo)
-
-        st.markdown("<br>",unsafe_allow_html=True)
-        nivs_analito=sorted(df_all[df_all["Analito"]==analito]["Nivel"].unique())
-        if len(nivs_analito)>1:
-            st.markdown('<div class="sec-head">Comparativa de niveles — Levey-Jennings</div>',unsafe_allow_html=True)
-            tabs_niveles=st.tabs([f"{NIVELES.get(n,NIVELES['N'])['icon']} {NIVELES.get(n,NIVELES['N'])['label']}" for n in nivs_analito])
-            for tab_n,niv in zip(tabs_niveles,nivs_analito):
+                st.markdown(
+                    f'<div class="kpi-card {estado_cls}"><div class="kpi-val" style="color:{color}">{val}</div>'
+                    f'<div class="kpi-lbl">{lbl}</div><div class="kpi-sub">{sub}</div></div>',
+                    unsafe_allow_html=True,
+                )
+        if r4s_result:
+            st.markdown("<br>", unsafe_allow_html=True)
+            render_r4s_alert(r4s_result)
+        if ultima["Estado"] != "Verde":
+            st.markdown("<br>", unsafe_allow_html=True)
+            render_kb_panel(analito, ultima["Estado"], ultima["Regla_Violada"], nivel_activo)
+        st.markdown("<br>", unsafe_allow_html=True)
+        nivs_analito = sorted(df_all[df_all["Analito"] == analito]["Nivel"].unique())
+        if len(nivs_analito) > 1:
+            st.markdown(
+                '<div class="sec-head">Comparativa de niveles — Levey-Jennings</div>',
+                unsafe_allow_html=True,
+            )
+            tabs_niveles = st.tabs(
+                [
+                    f"{NIVELES.get(n, NIVELES['N'])['icon']} {NIVELES.get(n, NIVELES['N'])['label']}"
+                    for n in nivs_analito
+                ]
+            )
+            for tab_n, niv in zip(tabs_niveles, nivs_analito):
                 with tab_n:
-                    sub_n=evaluar_westgard(df_all[(df_all["Analito"]==analito)&(df_all["Nivel"]==niv)&
-                                                   (df_all["Fecha"]>=pd.Timestamp(f_min))&
-                                                   (df_all["Fecha"]<=pd.Timestamp(f_max))].copy())
-                    if sub_n.empty: st.info("Sin datos para este nivel.")
+                    sub_n = evaluar_westgard(
+                        df_all[
+                            (df_all["Analito"] == analito)
+                            & (df_all["Nivel"] == niv)
+                            & (df_all["Fecha"] >= pd.Timestamp(f_min))
+                            & (df_all["Fecha"] <= pd.Timestamp(f_max))
+                        ].copy()
+                    )
+                    if sub_n.empty:
+                        st.info("Sin datos para este nivel.")
                     else:
-                        fig_n=build_lj_figure(sub_n,analito,niv)
-                        fig_n.update_layout(height=400,margin=dict(l=10,r=130,t=60,b=10))
-                        st.plotly_chart(fig_n,use_container_width=True)
+                        fig_n = build_lj_figure(sub_n, analito, niv)
+                        fig_n.update_layout(height=400, margin=dict(l=10, r=130, t=60, b=10))
+                        st.plotly_chart(fig_n, use_container_width=True)
         else:
-            fig=build_lj_figure(df_series,analito,nivel_activo)
-            fig.update_layout(height=460,width=None,margin=dict(l=10,r=130,t=60,b=10))
-            st.plotly_chart(fig,use_container_width=True)
+            fig = build_lj_figure(df_series, analito, nivel_activo)
+            fig.update_layout(height=460, width=None, margin=dict(l=10, r=130, t=60, b=10))
+            st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown('<div class="sec-head">Últimas 7 mediciones</div>',unsafe_allow_html=True)
-        tail=df_series.tail(7)[["Fecha","Valor","Z_Score","Regla_Violada","Score_Riesgo","Estado","Lote"]].copy()
-        tail["Fecha"]=tail["Fecha"].dt.strftime("%d/%m/%Y"); tail["Estado"]=tail["Estado"].apply(estado_badge)
-        st.write(tail.rename(columns={"Z_Score":"Z-Score","Regla_Violada":"Regla","Score_Riesgo":"Score"})
-                     .to_html(escape=False,index=False),unsafe_allow_html=True)
-
+        st.markdown('<div class="sec-head">Últimas 7 mediciones</div>', unsafe_allow_html=True)
+        tail = df_series.tail(7)[
+            ["Fecha", "Valor", "Z_Score", "Regla_Violada", "Score_Riesgo", "Estado", "Lote"]
+        ].copy()
+        tail["Fecha"] = tail["Fecha"].dt.strftime("%d/%m/%Y")
+        tail["Estado"] = tail["Estado"].apply(estado_badge)
+        st.write(
+            tail.rename(
+                columns={"Z_Score": "Z-Score", "Regla_Violada": "Regla", "Score_Riesgo": "Score"}
+            ).to_html(escape=False, index=False),
+            unsafe_allow_html=True,
+        )
 
 # ── TAB 2: EWMA / CUSUM ──────────────────────────────────────
 with tab_ewma:
@@ -1416,469 +490,724 @@ with tab_ewma:
     if df_series.empty or ultima is None:
         st.warning("No hay datos para el analito/nivel/rango seleccionado.")
     else:
-        z_scores=df_series["Z_Score"].tolist(); fechas=df_series["Fecha"].tolist()
-        with st.expander("⚙️ Parámetros EWMA y CUSUM",expanded=False):
-            col_p1,col_p2,col_p3=st.columns(3)
-            with col_p1: lam=st.slider("λ EWMA",0.05,0.50,0.20,0.05,key="ewma_lam")
-            with col_p2: cusum_k=st.slider("k CUSUM",0.25,1.0,0.5,0.25,key="cusum_k")
-            with col_p3: cusum_h=st.slider("h CUSUM",2.0,8.0,5.0,0.5,key="cusum_h")
-
-        ewma_r=calcular_ewma(z_scores,lam=lam); cusum_r=calcular_cusum(z_scores,k=cusum_k,h=cusum_h)
-        ewma_estado=ewma_r["estados"][-1] if ewma_r["estados"] else "Verde"
-        cusum_alarma=cusum_r["primera_alarma"] is not None
-        risk_ewma={"Verde":"#0D9E6E","Ámbar":"#F59E0B","Rojo":"#E53E3E"}.get(ewma_estado,"#0D9E6E")
-        risk_cusum="#E53E3E" if cusum_alarma else "#0D9E6E"
-        n_ambar_ewma=sum(1 for e in ewma_r["estados"] if e=="Ámbar")
-        n_rojo_ewma=sum(1 for e in ewma_r["estados"] if e=="Rojo")
-
-        kc1,kc2,kc3,kc4,kc5=st.columns(5)
-        for col,val,lbl,color,sub in [
-            (kc1,f"{ewma_r['ultimo_ewma']:+.3f}σ","EWMA Actual",risk_ewma,ewma_estado),
-            (kc2,f"{ewma_r['sigma_ewma']:.4f}","σ EWMA","#4F6FA8",f"λ={lam}"),
-            (kc3,f"{n_rojo_ewma}","Puntos Rojo","#E53E3E",f"{n_ambar_ewma} ámbar"),
-            (kc4,f"{cusum_r['max_cp']:.2f}","CUSUM+ Máx",risk_cusum,f"h={cusum_h}"),
-            (kc5,f"{cusum_r['max_cm']:.2f}","CUSUM− Máx",risk_cusum,f"k={cusum_k}"),
+        z_scores = df_series["Z_Score"].tolist()
+        fechas = df_series["Fecha"].tolist()
+        with st.expander("⚙ Parámetros EWMA y CUSUM", expanded=False):
+            col_p1, col_p2, col_p3 = st.columns(3)
+            with col_p1:
+                lam = st.slider("λ EWMA", 0.05, 0.50, 0.20, 0.05, key="ewma_lam")
+            with col_p2:
+                cusum_k = st.slider("k CUSUM", 0.25, 1.0, 0.5, 0.25, key="cusum_k")
+            with col_p3:
+                cusum_h = st.slider("h CUSUM", 2.0, 8.0, 5.0, 0.5, key="cusum_h")
+        ewma_r = calcular_ewma(z_scores, lam=lam)
+        cusum_r = calcular_cusum(z_scores, k=cusum_k, h=cusum_h)
+        ewma_estado = ewma_r["estados"][-1] if ewma_r["estados"] else "Verde"
+        cusum_alarma = cusum_r["primera_alarma"] is not None
+        risk_ewma = {"Verde": "#0D9E6E", "Ámbar": "#F59E0B", "Rojo": "#E53E3E"}.get(
+            ewma_estado, "#0D9E6E"
+        )
+        risk_cusum = "#E53E3E" if cusum_alarma else "#0D9E6E"
+        n_ambar_ewma = sum(1 for e in ewma_r["estados"] if e == "Ámbar")
+        n_rojo_ewma = sum(1 for e in ewma_r["estados"] if e == "Rojo")
+        kc1, kc2, kc3, kc4, kc5 = st.columns(5)
+        for col, val, lbl, color, sub in [
+            (kc1, f"{ewma_r['ultimo_ewma']:+.3f}σ", "EWMA Actual", risk_ewma, ewma_estado),
+            (kc2, f"{ewma_r['sigma_ewma']:.4f}", "σ EWMA", "#4F6FA8", f"λ={lam}"),
+            (kc3, f"{n_rojo_ewma}", "Puntos Rojo", "#E53E3E", f"{n_ambar_ewma} ámbar"),
+            (kc4, f"{cusum_r['max_cp']:.2f}", "CUSUM+ Máx", risk_cusum, f"h={cusum_h}"),
+            (kc5, f"{cusum_r['max_cm']:.2f}", "CUSUM− Máx", risk_cusum, f"k={cusum_k}"),
         ]:
             with col:
-                st.markdown(f'<div class="kpi-card"><div class="kpi-val" style="color:{color}">{val}</div>'
-                            f'<div class="kpi-lbl">{lbl}</div><div class="kpi-sub">{sub}</div></div>',unsafe_allow_html=True)
-
-        st.markdown("<br>",unsafe_allow_html=True)
-        alerta_mostrada=False
-        if ewma_estado=="Rojo":
-            st.error(f"🔴 **EWMA ROJA** — Deriva sostenida: **{ewma_r['ultimo_ewma']:+.3f}σ**"); alerta_mostrada=True
-        elif ewma_estado=="Ámbar":
-            inicio=ewma_r["inicio_deriva"]
-            fecha_inicio=fechas[inicio].strftime("%d/%m/%Y") if inicio is not None else "—"
-            st.warning(f"⚠️ **EWMA ÁMBAR** — Tendencia desde **{fecha_inicio}**: **{ewma_r['ultimo_ewma']:+.3f}σ**"); alerta_mostrada=True
+                st.markdown(
+                    f'<div class="kpi-card"><div class="kpi-val" style="color:{color}">{val}</div>'
+                    f'<div class="kpi-lbl">{lbl}</div><div class="kpi-sub">{sub}</div></div>',
+                    unsafe_allow_html=True,
+                )
+        st.markdown("<br>", unsafe_allow_html=True)
+        alerta_mostrada = False
+        if ewma_estado == "Rojo":
+            st.error(f"🔴 **EWMA ROJA** — Deriva sostenida: **{ewma_r['ultimo_ewma']:+.3f}σ**")
+            alerta_mostrada = True
+        elif ewma_estado == "Ámbar":
+            inicio = ewma_r["inicio_deriva"]
+            fecha_inicio = fechas[inicio].strftime("%d/%m/%Y") if inicio is not None else "—"
+            st.warning(
+                f"⚠ **EWMA ÁMBAR** — Tendencia desde **{fecha_inicio}**: **{ewma_r['ultimo_ewma']:+.3f}σ**"
+            )
+            alerta_mostrada = True
         if cusum_alarma:
-            fecha_cusum=fechas[cusum_r["primera_alarma"]].strftime("%d/%m/%Y")
-            tipo_txt="ascendente ↑" if cusum_r["tipo_deriva"]=="ascendente" else "descendente ↓"
-            st.error(f"🔴 **CUSUM alarma** — Deriva {tipo_txt} desde **{fecha_cusum}**"); alerta_mostrada=True
+            fecha_cusum = fechas[cusum_r["primera_alarma"]].strftime("%d/%m/%Y")
+            tipo_txt = "ascendente ↑" if cusum_r["tipo_deriva"] == "ascendente" else "descendente ↓"
+            st.error(f"🔴 **CUSUM alarma** — Deriva {tipo_txt} desde **{fecha_cusum}**")
+            alerta_mostrada = True
         if not alerta_mostrada:
-            st.success(f"✅ Proceso bajo control — EWMA={ewma_r['ultimo_ewma']:+.3f}σ C+={cusum_r['max_cp']:.2f} C−={cusum_r['max_cm']:.2f}")
-
-        st.markdown('<div class="sec-head">Gráfico EWMA</div>',unsafe_allow_html=True)
-        st.plotly_chart(build_ewma_figure(fechas,z_scores,ewma_r,analito,nivel_activo),use_container_width=True)
-        st.markdown('<div class="sec-head">Gráfico CUSUM</div>',unsafe_allow_html=True)
-        st.plotly_chart(build_cusum_figure(fechas,cusum_r,analito,nivel_activo),use_container_width=True)
-
-        st.markdown('<div class="sec-head">Tabla EWMA / CUSUM</div>',unsafe_allow_html=True)
-        tabla_ec=pd.DataFrame({
-            "Fecha":[f.strftime("%d/%m/%Y") for f in fechas],
-            "Z-Score":[round(z,3) for z in z_scores],
-            "EWMA":[round(e,4) for e in ewma_r["ewma"]],
-            "Estado EWMA":ewma_r["estados"],
-            "CUSUM+":[round(c,3) for c in cusum_r["cusum_pos"]],
-            "CUSUM−":[round(c,3) for c in cusum_r["cusum_neg"]],
-            "Alarma":["🔴 SÍ" if a else "✅ No" for a in cusum_r["alarma_any"]],
-        })
-        tabla_ec["Estado EWMA"]=tabla_ec["Estado EWMA"].apply(estado_badge)
-        st.write(tabla_ec.to_html(escape=False,index=False),unsafe_allow_html=True)
-
+            st.success(
+                f"✅ Proceso bajo control — EWMA={ewma_r['ultimo_ewma']:+.3f}σ "
+                f"C+={cusum_r['max_cp']:.2f} C−={cusum_r['max_cm']:.2f}"
+            )
+        st.markdown('<div class="sec-head">Gráfico EWMA</div>', unsafe_allow_html=True)
+        st.plotly_chart(
+            build_ewma_figure(fechas, z_scores, ewma_r, analito, nivel_activo),
+            use_container_width=True,
+        )
+        st.markdown('<div class="sec-head">Gráfico CUSUM</div>', unsafe_allow_html=True)
+        st.plotly_chart(
+            build_cusum_figure(fechas, cusum_r, analito, nivel_activo), use_container_width=True
+        )
+        st.markdown('<div class="sec-head">Tabla EWMA / CUSUM</div>', unsafe_allow_html=True)
+        tabla_ec = pd.DataFrame(
+            {
+                "Fecha": [f.strftime("%d/%m/%Y") for f in fechas],
+                "Z-Score": [round(z, 3) for z in z_scores],
+                "EWMA": [round(e, 4) for e in ewma_r["ewma"]],
+                "Estado EWMA": ewma_r["estados"],
+                "CUSUM+": [round(c, 3) for c in cusum_r["cusum_pos"]],
+                "CUSUM−": [round(c, 3) for c in cusum_r["cusum_neg"]],
+                "Alarma": ["🔴 SÍ" if a else "✅ No" for a in cusum_r["alarma_any"]],
+            }
+        )
+        tabla_ec["Estado EWMA"] = tabla_ec["Estado EWMA"].apply(estado_badge)
+        st.write(tabla_ec.to_html(escape=False, index=False), unsafe_allow_html=True)
 
 # ── TAB 3: SIGMA METRICS ─────────────────────────────────────
 with tab_sigma:
     st.markdown("### 📈 Sigma Metrics — Evaluación de Calidad Analítica")
-    with st.expander("⚙️ Editar límites TEa por analito",expanded=False):
-        tea_editado={}
-        cols_tea=st.columns(min(len(analitos_ls),3))
-        for i,an in enumerate(analitos_ls):
-            with cols_tea[i%len(cols_tea)]:
-                tea_editado[an]=st.number_input(f"TEa% — {an.split('(')[0].strip()}",
-                    min_value=1.0,max_value=50.0,value=float(TEA_CLIA.get(an,(TEA_DEFAULT,"",""))[0]),step=0.5,key=f"tea_{an}")
-    st.markdown("<br>",unsafe_allow_html=True)
-    niveles_globales=sorted(df_all["Nivel"].unique())
-    sigma_data=[]
+    with st.expander("⚙ Editar límites TEa por analito", expanded=False):
+        tea_editado = {}
+        cols_tea = st.columns(min(len(analitos_ls), 3))
+        for i, an in enumerate(analitos_ls):
+            with cols_tea[i % len(cols_tea)]:
+                tea_editado[an] = st.number_input(
+                    f"TEa% — {an.split('(')[0].strip()}",
+                    min_value=1.0,
+                    max_value=50.0,
+                    value=float(TEA_CLIA.get(an, (TEA_DEFAULT, "", ""))[0]),
+                    step=0.5,
+                    key=f"tea_{an}",
+                )
+    st.markdown("<br>", unsafe_allow_html=True)
+    niveles_globales = sorted(df_all["Nivel"].unique())
+    sigma_data = []
     for an in analitos_ls:
         for niv in niveles_globales:
-            sub=df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)&
-                       (df_all["Fecha"]>=pd.Timestamp(f_min))&(df_all["Fecha"]<=pd.Timestamp(f_max))].copy()
-            if sub.empty: continue
-            sig=calcular_sigma(sub,tea_editado.get(an,TEA_DEFAULT))
-            if sig: sigma_data.append({"analito":an,"nivel":niv,"nivel_label":NIVELES.get(niv,NIVELES["N"])["label"],**sig})
+            sub = df_all[
+                (df_all["Analito"] == an)
+                & (df_all["Nivel"] == niv)
+                & (df_all["Fecha"] >= pd.Timestamp(f_min))
+                & (df_all["Fecha"] <= pd.Timestamp(f_max))
+            ].copy()
+            if sub.empty:
+                continue
+            sig = calcular_sigma(sub, tea_editado.get(an, TEA_DEFAULT))
+            if sig:
+                sigma_data.append(
+                    {
+                        "analito": an,
+                        "nivel": niv,
+                        "nivel_label": NIVELES.get(niv, NIVELES["N"])["label"],
+                        **sig,
+                    }
+                )
     if not sigma_data:
         st.warning("Sin datos suficientes.")
     else:
         for niv in niveles_globales:
-            niv_cfg=NIVELES.get(niv,NIVELES["N"]); niv_data=[d for d in sigma_data if d["nivel"]==niv]
-            if not niv_data: continue
-            st.markdown(f'<div class="sec-head">{niv_cfg["icon"]} {niv_cfg["label"]}</div>',unsafe_allow_html=True)
-            cols_s=st.columns(len(niv_data))
-            for col,d in zip(cols_s,niv_data):
+            niv_cfg = NIVELES.get(niv, NIVELES["N"])
+            niv_data = [d for d in sigma_data if d["nivel"] == niv]
+            if not niv_data:
+                continue
+            st.markdown(
+                f'<div class="sec-head">{niv_cfg["icon"]} {niv_cfg["label"]}</div>',
+                unsafe_allow_html=True,
+            )
+            cols_s = st.columns(len(niv_data))
+            for col, d in zip(cols_s, niv_data):
                 with col:
-                    st.markdown(f'<div class="kpi-card"><div class="kpi-val" style="color:{d["color"]}">{d["sigma"]}σ</div>'
-                                f'<div class="kpi-lbl">{d["analito"].split("(")[0].strip()}</div>'
-                                f'<div class="kpi-sub">{d["categoria"]}</div></div>',unsafe_allow_html=True)
-        st.markdown("<br>",unsafe_allow_html=True)
-        fig_s=go.Figure()
-        colores_nivel={"N":"#1A6FC4","PB":"#F59E0B","PA":"#E53E3E"}
+                    st.markdown(
+                        f'<div class="kpi-card"><div class="kpi-val" style="color:{d["color"]}">{d["sigma"]}σ</div>'
+                        f'<div class="kpi-lbl">{d["analito"].split("(")[0].strip()}</div>'
+                        f'<div class="kpi-sub">{d["categoria"]}</div></div>',
+                        unsafe_allow_html=True,
+                    )
+        st.markdown("<br>", unsafe_allow_html=True)
+        fig_s = go.Figure()
+        colores_nivel = {"N": "#1A6FC4", "PB": "#F59E0B", "PA": "#E53E3E"}
         for niv in niveles_globales:
-            niv_data=[d for d in sigma_data if d["nivel"]==niv]
-            if not niv_data: continue
-            fig_s.add_trace(go.Bar(name=NIVELES.get(niv,NIVELES["N"])["label"],
-                x=[d["analito"].split("(")[0].strip() for d in niv_data],y=[d["sigma"] for d in niv_data],
-                marker_color=colores_nivel.get(niv,"#1A6FC4"),marker_line_color="#FFFFFF",marker_line_width=1.5,
-                text=[f"{d['sigma']}σ" for d in niv_data],textposition="outside"))
-        for y_v,color,lbl in [(6,"#0D9E6E","6σ"),(4,"#1A6FC4","4σ"),(3,"#F59E0B","3σ")]:
-            fig_s.add_hline(y=y_v,line_color=color,line_width=1.5,line_dash="dash",
-                            annotation_text=lbl,annotation_position="right",annotation_font=dict(color=color,size=11))
-        for y0,y1,col in [(6,10,"rgba(13,158,110,.07)"),(4,6,"rgba(26,111,196,.06)"),
-                           (3,4,"rgba(245,158,11,.06)"),(0,3,"rgba(229,62,62,.06)")]:
-            fig_s.add_hrect(y0=y0,y1=y1,fillcolor=col,line_width=0)
-        fig_s.update_layout(template="plotly_white",barmode="group",
-            title=dict(text="Sigma Metrics por Analito y Nivel",font=dict(size=15,color="#1C2B3A",family="Inter")),
-            paper_bgcolor="#FFFFFF",plot_bgcolor="#FAFBFC",font=dict(color="#475569",family="Inter"),
-            xaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="Analito"),
-            yaxis=dict(gridcolor="#F1F5F9",linecolor="#E2E8F0",title="Sigma (σ)",range=[0,11]),
-            height=440,margin=dict(l=10,r=130,t=60,b=10),legend=dict(orientation="h",y=1.08,x=0.5,xanchor="center"))
-        st.plotly_chart(fig_s,use_container_width=True)
-        st.markdown('<div class="sec-head">Detalle</div>',unsafe_allow_html=True)
-        st.write(pd.DataFrame([{"Analito":d["analito"],"Nivel":d["nivel_label"],"N":d["n"],"Media":d["media"],
-            "SD":d["sd"],"CV%":f"{d['cv_pct']}%","Sesgo%":f"{d['sesgo_pct']}%","TEa%":f"{d['tea_pct']}%",
-            "Sigma":d["sigma"],"Categoría":d["categoria"]} for d in sigma_data]).to_html(escape=False,index=False),unsafe_allow_html=True)
+            niv_data = [d for d in sigma_data if d["nivel"] == niv]
+            if not niv_data:
+                continue
+            fig_s.add_trace(
+                go.Bar(
+                    name=NIVELES.get(niv, NIVELES["N"])["label"],
+                    x=[d["analito"].split("(")[0].strip() for d in niv_data],
+                    y=[d["sigma"] for d in niv_data],
+                    marker_color=colores_nivel.get(niv, "#1A6FC4"),
+                    marker_line_color="#FFFFFF",
+                    marker_line_width=1.5,
+                    text=[f"{d['sigma']}σ" for d in niv_data],
+                    textposition="outside",
+                )
+            )
+        for y_v, color, lbl in [(6, "#0D9E6E", "6σ"), (4, "#1A6FC4", "4σ"), (3, "#F59E0B", "3σ")]:
+            fig_s.add_hline(
+                y=y_v,
+                line_color=color,
+                line_width=1.5,
+                line_dash="dash",
+                annotation_text=lbl,
+                annotation_position="right",
+                annotation_font=dict(color=color, size=11),
+            )
+        for y0, y1, col in [
+            (6, 10, "rgba(13,158,110,.07)"),
+            (4, 6, "rgba(26,111,196,.06)"),
+            (3, 4, "rgba(245,158,11,.06)"),
+            (0, 3, "rgba(229,62,62,.06)"),
+        ]:
+            fig_s.add_hrect(y0=y0, y1=y1, fillcolor=col, line_width=0)
+        fig_s.update_layout(
+            template="plotly_white",
+            barmode="group",
+            title=dict(
+                text="Sigma Metrics por Analito y Nivel",
+                font=dict(size=15, color="#1C2B3A", family="Inter"),
+            ),
+            paper_bgcolor="#FFFFFF",
+            plot_bgcolor="#FAFBFC",
+            font=dict(color="#475569", family="Inter"),
+            xaxis=dict(gridcolor="#F1F5F9", linecolor="#E2E8F0", title="Analito"),
+            yaxis=dict(gridcolor="#F1F5F9", linecolor="#E2E8F0", title="Sigma (σ)", range=[0, 11]),
+            height=440,
+            margin=dict(l=10, r=130, t=60, b=10),
+            legend=dict(orientation="h", y=1.08, x=0.5, xanchor="center"),
+        )
+        st.plotly_chart(fig_s, use_container_width=True)
+        st.markdown('<div class="sec-head">Detalle</div>', unsafe_allow_html=True)
+        st.write(
+            pd.DataFrame(
+                [
+                    {
+                        "Analito": d["analito"],
+                        "Nivel": d["nivel_label"],
+                        "N": d["n"],
+                        "Media": d["media"],
+                        "SD": d["sd"],
+                        "CV%": f"{d['cv_pct']}%",
+                        "Sesgo%": f"{d['sesgo_pct']}%",
+                        "TEa%": f"{d['tea_pct']}%",
+                        "Sigma": d["sigma"],
+                        "Categoría": d["categoria"],
+                    }
+                    for d in sigma_data
+                ]
+            ).to_html(escape=False, index=False),
+            unsafe_allow_html=True,
+        )
         for d in sigma_data:
-            s=d["sigma"]; lbl=f"**{d['analito']} [{d['nivel_label']}]** — **{s}σ**"
-            if s>=6:   st.success(f"{lbl} · clase mundial.")
-            elif s>=4: st.info(f"{lbl} · buena calidad.")
-            elif s>=3: st.warning(f"{lbl} · aceptable.")
-            else:      st.error(f"{lbl} · deficiente. Revisar.")
-
+            s = d["sigma"]
+            lbl = f"**{d['analito']} [{d['nivel_label']}]** — **{s}σ**"
+            if s >= 6:
+                st.success(f"{lbl} · clase mundial.")
+            elif s >= 4:
+                st.info(f"{lbl} · buena calidad.")
+            elif s >= 3:
+                st.warning(f"{lbl} · aceptable.")
+            else:
+                st.error(f"{lbl} · deficiente. Revisar.")
 
 # ── TAB 4: GUÍA BIO-RAD ──────────────────────────────────────
 with tab_biorad:
     st.markdown("### 📋 Guía Bio-Rad de Acciones Correctivas")
-    col_sel1,col_sel2=st.columns([2,1])
-    with col_sel1: an_kb=st.selectbox("Analito a consultar",options=list(BIORAD_KB.keys()),key="kb_analito_sel")
-    with col_sel2: estado_kb=st.selectbox("Simular estado",options=["Rojo (1_3s)","Ámbar (4_1s / 10_x)","Verde (informativo)"],key="kb_estado_sel")
-    estado_sim="Rojo" if "Rojo" in estado_kb else "Ámbar" if "Ámbar" in estado_kb else "Verde"
-    regla_sim="1_3s" if estado_sim=="Rojo" else "4_1s" if estado_sim=="Ámbar" else "—"
-    st.markdown("<br>",unsafe_allow_html=True)
-    render_kb_panel(an_kb,estado_sim,regla_sim,nivel_activo)
+    col_sel1, col_sel2 = st.columns([2, 1])
+    with col_sel1:
+        an_kb = st.selectbox(
+            "Analito a consultar", options=list(BIORAD_KB.keys()), key="kb_analito_sel"
+        )
+    with col_sel2:
+        estado_kb = st.selectbox(
+            "Simular estado",
+            options=["Rojo (1_3s)", "Ámbar (4_1s / 10_x)", "Verde (informativo)"],
+            key="kb_estado_sel",
+        )
+    estado_sim = "Rojo" if "Rojo" in estado_kb else "Ámbar" if "Ámbar" in estado_kb else "Verde"
+    regla_sim = "1_3s" if estado_sim == "Rojo" else "4_1s" if estado_sim == "Ámbar" else "—"
+    st.markdown("<br>", unsafe_allow_html=True)
+    render_kb_panel(an_kb, estado_sim, regla_sim, nivel_activo)
     st.markdown("---")
     st.markdown("### 🔴 Alarmas activas en el período seleccionado")
-    hay_alarmas=False
+    hay_alarmas = False
     for an in analitos_ls:
         for niv in sorted(df_all["Nivel"].unique()):
-            sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)&
-                                        (df_all["Fecha"]>=pd.Timestamp(f_min))&
-                                        (df_all["Fecha"]<=pd.Timestamp(f_max))].copy())
-            if sub.empty: continue
-            u=sub.iloc[-1]
-            if u["Estado"]!="Verde": hay_alarmas=True; render_kb_panel(an,u["Estado"],u["Regla_Violada"],niv)
-        r4s_br=evaluar_r4s(df_all,an,f_min,f_max)
+            sub = evaluar_westgard(
+                df_all[
+                    (df_all["Analito"] == an)
+                    & (df_all["Nivel"] == niv)
+                    & (df_all["Fecha"] >= pd.Timestamp(f_min))
+                    & (df_all["Fecha"] <= pd.Timestamp(f_max))
+                ].copy()
+            )
+            if sub.empty:
+                continue
+            u = sub.iloc[-1]
+            if u["Estado"] != "Verde":
+                hay_alarmas = True
+                render_kb_panel(an, u["Estado"], u["Regla_Violada"], niv)
+        r4s_br = evaluar_r4s(df_all, an, f_min, f_max)
         if r4s_br:
-            hay_alarmas=True
-            st.markdown(f"""<div class="biorad-card-red"><b>⚡ R-4s — {an}</b><br>
-                <small>{r4s_br['label_a']} (Z={r4s_br['z_a']:+.2f}) vs {r4s_br['label_b']} (Z={r4s_br['z_b']:+.2f})
-                — Diff={r4s_br['diferencia']:.2f}σ — Acción: repetir ambos niveles. No recalibrar.</small></div>""",
-                unsafe_allow_html=True)
-    if not hay_alarmas: st.success("✅ No hay alarmas activas.")
+            hay_alarmas = True
+            st.markdown(
+                f"""<div class="biorad-card-red"><b>⚡ R-4s — {an}</b><br>
+<small>{r4s_br['label_a']} (Z={r4s_br['z_a']:+.2f}) vs {r4s_br['label_b']} (Z={r4s_br['z_b']:+.2f})
+— Diff={r4s_br['diferencia']:.2f}σ — Acción: repetir ambos niveles. No recalibrar.</small></div>""",
+                unsafe_allow_html=True,
+            )
+    if not hay_alarmas:
+        st.success("✅ No hay alarmas activas.")
     st.markdown("---")
     st.markdown("### 📚 Cobertura de la base de conocimiento")
-    for grupo,analitos_grupo in GRUPOS_ANALITICOS.items():
-        con_ficha=[a for a in analitos_grupo if a in BIORAD_KB]
-        st.markdown(f"**{grupo}:** "+" · ".join([f"`{a}`" for a in con_ficha]))
-
+    for grupo, analitos_grupo in GRUPOS_ANALITICOS.items():
+        con_ficha = [a for a in analitos_grupo if a in BIORAD_KB]
+        st.markdown(f"**{grupo}:** " + " · ".join([f"`{a}`" for a in con_ficha]))
 
 # ── TAB 5: ASISTENTE IA ──────────────────────────────────────
 with tab_chat:
     st.markdown("### 🤖 Asistente AIQC — Powered by Google Gemini")
-    modelo_activo=st.session_state.get("gemini_model_active","models/gemini-2.5-flash")
-    st.markdown(f'<div class="gemini-banner">🟢 <b>Google Gemini</b> · Modelo: <code>{modelo_activo}</code> · '
-                f'Bio-Rad KB + cobas 8000 + R-4s + EWMA/CUSUM + OpenLab sync · Conversación libre habilitada.</div>',
-                unsafe_allow_html=True)
+    modelo_activo = st.session_state.get("gemini_model_active", "models/gemini-2.5-flash")
+    st.markdown(
+        f'<div class="gemini-banner">🟢 <b>Google Gemini</b> · Modelo: <code>{modelo_activo}</code> · '
+        f"Bio-Rad KB + cobas 8000 + R-4s + EWMA/CUSUM + OpenLab sync · Conversación libre habilitada.</div>",
+        unsafe_allow_html=True,
+    )
     if "messages" not in st.session_state:
-        st.session_state["messages"]=[{"role":"assistant","content":(
-            "¡Hola! Soy el **Asistente AIQC v4.13** 👋\n\n"
-            "Tengo acceso a los datos de laboratorio, la base de conocimiento Bio-Rad "
-            "y el manual del **cobas® 8000**.\n\n"
-            "Prueba a preguntarme:\n"
-            "- *¿Hay alguna alarma activa?*\n"
-            "- *¿Qué indica el EWMA de la Amilasa en Patológico Bajo?*\n"
-            "- *¿Cómo proceso la bandeja verde del cobas 8000?*\n"
-            "- *Dame un plan correctivo para la alarma R-4s*\n"
-            "- O cualquier otra consulta 😊"
-        )}]
+        st.session_state["messages"] = [
+            {
+                "role": "assistant",
+                "content": (
+                    "¡Hola! Soy el **Asistente AIQC v4.13** 👋\n\n"
+                    "Tengo acceso a los datos de laboratorio, la base de conocimiento Bio-Rad "
+                    "y el manual del **cobas® 8000**.\n\n"
+                    "Prueba a preguntarme:\n"
+                    "- *¿Hay alguna alarma activa?*\n"
+                    "- *¿Qué indica el EWMA de la Amilasa en Patológico Bajo?*\n"
+                    "- *¿Cómo proceso la bandeja verde del cobas 8000?*\n"
+                    "- *Dame un plan correctivo para la alarma R-4s*\n"
+                    "- O cualquier otra consulta 😊"
+                ),
+            }
+        ]
     for msg in st.session_state["messages"]:
-        with st.chat_message(msg["role"],avatar="🤖" if msg["role"]=="assistant" else "👤"):
+        with st.chat_message(msg["role"], avatar="🤖" if msg["role"] == "assistant" else "👤"):
             st.markdown(msg["content"])
-    if prompt:=st.chat_input("Escribe tu consulta o pregunta…"):
-        st.session_state["messages"].append({"role":"user","content":prompt})
-        with st.chat_message("user",avatar="👤"): st.markdown(prompt)
-        with st.chat_message("assistant",avatar="🤖"):
-            spinner_txt="Analizando datos QC, cobas 8000, Bio-Rad KB…" if _necesita_datos_qc(prompt) else "Pensando…"
+    if prompt := st.chat_input("Escribe tu consulta o pregunta…"):
+        st.session_state["messages"].append({"role": "user", "content": prompt})
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(prompt)
+        with st.chat_message("assistant", avatar="🤖"):
+            spinner_txt = (
+                "Analizando datos QC, cobas 8000, Bio-Rad KB…"
+                if necesita_datos_qc(prompt)
+                else "Pensando…"
+            )
             with st.spinner(spinner_txt):
-                resp=ia_responde_gemini(prompt,st.session_state["messages"],df_all,analitos_ls,f_min,f_max)
-                st.markdown(resp)
-        st.session_state["messages"].append({"role":"assistant","content":resp})
-        registrar_auditoria(db_con,usuario_actual,"CHAT_QUERY",prompt[:120])
-    if st.button("🗑️ Nueva conversación",key="clr"):
-        st.session_state["messages"]=[st.session_state["messages"][0]]; st.rerun()
-
+                resp = ia_responde_gemini(
+                    prompt, st.session_state["messages"], df_all, analitos_ls, f_min, f_max
+                )
+            st.markdown(resp)
+        st.session_state["messages"].append({"role": "assistant", "content": resp})
+        registrar_auditoria(db_con, usuario_actual, "CHAT_QUERY", prompt[:120])
+    if st.button("🗑 Nueva conversación", key="clr"):
+        st.session_state["messages"] = [st.session_state["messages"][0]]
+        st.rerun()
 
 # ── TAB 6: REGISTRO ──────────────────────────────────────────
 with tab_log:
-    col_ttl,col_csv,col_pdf=st.columns([3,1,1])
+    col_ttl, col_csv, col_pdf = st.columns([3, 1, 1])
     with col_ttl:
         st.markdown("### 📝 Registro de Incidencias y Trazabilidad")
         st.caption(f"Fuente activa: {data_src} · Usuario: {usuario_actual}")
-    lab_nombre=st.secrets.get("lab",{}).get("nombre","LAB. CENTRAL")
+    lab_nombre = get_section("lab").get("nombre", "LAB. CENTRAL")
     with col_csv:
-        st.markdown("<br>",unsafe_allow_html=True); csv_placeholder=st.empty()
+        st.markdown("<br>", unsafe_allow_html=True)
+        csv_placeholder = st.empty()
     with col_pdf:
-        st.markdown("<br>",unsafe_allow_html=True)
-        if st.button("📄 Descargar PDF",use_container_width=True,type="primary"):
-            if not tiene_permiso(rol_actual,"supervisor"):
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("📄 Descargar PDF", use_container_width=True, type="primary"):
+            if not tiene_permiso(rol_actual, "supervisor"):
                 st.error("❌ Solo supervisores y administradores pueden generar PDF.")
             else:
                 with st.spinner("Generando informe…"):
                     try:
-                        pdf_bytes=generar_pdf(df_all,analitos_ls,data_src,f_min,f_max,lab_nombre)
-                        fname=f"AIQC_Informe_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
-                        st.download_button("⬇️ Guardar PDF",data=pdf_bytes,file_name=fname,
-                                           mime="application/pdf",use_container_width=True)
-                        registrar_auditoria(db_con,usuario_actual,"EXPORT_PDF",fname)
+                        pdf_bytes = generar_pdf(
+                            df_all, analitos_ls, data_src, f_min, f_max, lab_nombre
+                        )
+                        fname = f"AIQC_Informe_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+                        st.download_button(
+                            "⬇ Guardar PDF",
+                            data=pdf_bytes,
+                            file_name=fname,
+                            mime="application/pdf",
+                            use_container_width=True,
+                        )
+                        registrar_auditoria(db_con, usuario_actual, "EXPORT_PDF", fname)
                         st.success("✅ Informe generado.")
-                    except Exception as e: st.error(f"Error: {e}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
 
-    niveles_globales_log=sorted(df_all["Nivel"].unique())
-    all_log_frames=[]
+    niveles_globales_log = sorted(df_all["Nivel"].unique())
+    all_log_frames = []
     for an in analitos_ls:
         for niv in niveles_globales_log:
-            sub=evaluar_westgard(df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)&
-                                        (df_all["Fecha"]>=pd.Timestamp(f_min))&
-                                        (df_all["Fecha"]<=pd.Timestamp(f_max))].copy())
+            sub = evaluar_westgard(
+                df_all[
+                    (df_all["Analito"] == an)
+                    & (df_all["Nivel"] == niv)
+                    & (df_all["Fecha"] >= pd.Timestamp(f_min))
+                    & (df_all["Fecha"] <= pd.Timestamp(f_max))
+                ].copy()
+            )
             if not sub.empty:
-                sub["_nivel_label"]=NIVELES.get(niv,NIVELES["N"])["label"]; all_log_frames.append(sub)
-
-    df_full_log=pd.concat(all_log_frames,ignore_index=True) if all_log_frames else pd.DataFrame()
-    df_log=df_full_log[df_full_log["Estado"]!="Verde"].copy().reset_index(drop=True) if not df_full_log.empty else pd.DataFrame()
+                sub["_nivel_label"] = NIVELES.get(niv, NIVELES["N"])["label"]
+                all_log_frames.append(sub)
+    df_full_log = pd.concat(all_log_frames, ignore_index=True) if all_log_frames else pd.DataFrame()
+    df_log = (
+        df_full_log[df_full_log["Estado"] != "Verde"].copy().reset_index(drop=True)
+        if not df_full_log.empty
+        else pd.DataFrame()
+    )
 
     if df_log.empty:
         st.success("✅ Sin violaciones en el período seleccionado.")
         with csv_placeholder:
-            st.download_button("⬇️ Exportar CSV",data=b"Sin violaciones",
-                               file_name="AIQC_sin_incidencias.csv",mime="text/csv",
-                               use_container_width=True,disabled=True)
+            st.download_button(
+                "⬇ Exportar CSV",
+                data=b"Sin violaciones",
+                file_name="AIQC_sin_incidencias.csv",
+                mime="text/csv",
+                use_container_width=True,
+                disabled=True,
+            )
     else:
-        acciones_db=load_acciones(db_con)
-        hcols=st.columns([1.4,2.0,1.4,1.1,1.2,1.3,1.4,1.4,1.3])
-        for c,lbl in zip(hcols,["📅 Fecha","🔬 Analito","Nivel","Valor","Z-Score","Regla","Score","Estado","✅ Acción"]):
+        acciones_db = load_acciones(db_con)
+        hcols = st.columns([1.4, 2.0, 1.4, 1.1, 1.2, 1.3, 1.4, 1.4, 1.3])
+        for c, lbl in zip(
+            hcols,
+            [
+                "📅 Fecha",
+                "🔬 Analito",
+                "Nivel",
+                "Valor",
+                "Z-Score",
+                "Regla",
+                "Score",
+                "Estado",
+                "✅ Acción",
+            ],
+        ):
             c.markdown(f"**{lbl}**")
-        st.markdown("<hr style='border-color:#E2E8F0'>",unsafe_allow_html=True)
-        for idx,row in df_log.iterrows():
-            key=f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label','N')}_{idx}"
-            rcols=st.columns([1.4,2.0,1.4,1.1,1.2,1.3,1.4,1.4,1.3])
+        st.markdown("<hr style='border-color:#E2E8F0'>", unsafe_allow_html=True)
+        for idx, row in df_log.iterrows():
+            key = f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label', 'N')}_{idx}"
+            rcols = st.columns([1.4, 2.0, 1.4, 1.1, 1.2, 1.3, 1.4, 1.4, 1.3])
             rcols[0].write(row["Fecha"].strftime("%d/%m/%Y"))
             rcols[1].write(row["Analito"])
-            rcols[2].markdown(nivel_badge(row.get("Nivel","N")),unsafe_allow_html=True)
+            rcols[2].markdown(nivel_badge(row.get("Nivel", "N")), unsafe_allow_html=True)
             rcols[3].write(str(row["Valor"]))
             rcols[4].write(f"{row['Z_Score']:+.2f}σ")
             rcols[5].write(row["Regla_Violada"])
             rcols[6].write(f"{int(row['Score_Riesgo'])}/100")
-            rcols[7].markdown(estado_badge(row["Estado"]),unsafe_allow_html=True)
-            prev=acciones_db.get(key,False)
-            nuevo=rcols[8].checkbox("Hecha",value=prev,key=f"accion_{key}")
-            if nuevo!=prev: save_accion(db_con,key,nuevo,usuario=usuario_actual)
-
-        st.markdown("<hr style='border-color:#E2E8F0'>",unsafe_allow_html=True)
-        acciones_db=load_acciones(db_con)
-        claves_log=[f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label','N')}_{idx}" for idx,row in df_log.iterrows()]
-        total=len(df_log); hechas=sum(acciones_db.get(k,False) for k in claves_log); pend=total-hechas
-        m1,m2,m3,m4=st.columns(4)
-        m1.metric("Total violaciones",total); m2.metric("Acciones tomadas ✅",hechas)
-        m3.metric("Pendientes ⏳",pend); m4.metric("% completado",f"{int(hechas/total*100) if total else 0}%")
-
-        csv_bytes=generar_csv(df_log,acciones_db,claves_log)
+            rcols[7].markdown(estado_badge(row["Estado"]), unsafe_allow_html=True)
+            prev = acciones_db.get(key, False)
+            nuevo = rcols[8].checkbox("Hecha", value=prev, key=f"accion_{key}")
+            if nuevo != prev:
+                save_accion(db_con, key, nuevo, usuario=usuario_actual)
+            st.markdown("<hr style='border-color:#E2E8F0'>", unsafe_allow_html=True)
+        acciones_db = load_acciones(db_con)
+        claves_log = [
+            f"{row['Fecha'].date()}_{row['Analito']}_{row.get('_nivel_label', 'N')}_{idx}"
+            for idx, row in df_log.iterrows()
+        ]
+        total = len(df_log)
+        hechas = sum(acciones_db.get(k, False) for k in claves_log)
+        pend = total - hechas
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Total violaciones", total)
+        m2.metric("Acciones tomadas ✅", hechas)
+        m3.metric("Pendientes ⏳", pend)
+        m4.metric("% completado", f"{int(hechas / total * 100) if total else 0}%")
+        csv_bytes = generar_csv(df_log, acciones_db, claves_log)
         with csv_placeholder:
-            st.download_button("⬇️ Exportar CSV",data=csv_bytes,
-                               file_name=f"AIQC_Incidencias_{f_min.strftime('%Y%m%d')}_{f_max.strftime('%Y%m%d')}.csv",
-                               mime="text/csv",use_container_width=True,
-                               help="CSV con separador ';' y UTF-8 BOM — compatible con Excel español.")
-
-        if hechas==total: st.success("🎉 Trazabilidad completa.")
-        elif pend: st.warning(f"⚠️ {pend} violación(es) pendiente(s).")
-
+            st.download_button(
+                "⬇ Exportar CSV",
+                data=csv_bytes,
+                file_name=f"AIQC_Incidencias_{f_min.strftime('%Y%m%d')}_{f_max.strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                help="CSV con separador ';' y UTF-8 BOM — compatible con Excel español.",
+            )
+        if hechas == total:
+            st.success("🎉 Trazabilidad completa.")
+        elif pend:
+            st.warning(f"⚠ {pend} violación(es) pendiente(s).")
 
 # ── TAB 7: USUARIOS ──────────────────────────────────────────
 with tab_usuarios:
     st.markdown("### 👥 Gestión de Usuarios")
-    if not tiene_permiso(rol_actual,"admin"):
+    if not tiene_permiso(rol_actual, "admin"):
         st.warning("🔒 Solo los administradores pueden gestionar usuarios.")
         st.info(f"Tu rol actual es **{rol_actual}**. Contacta con el administrador.")
     else:
-        st.markdown('<div class="sec-head">Usuarios registrados</div>',unsafe_allow_html=True)
-        users=db_con.execute("SELECT id,username,rol,nombre,activo,creado_en,ultimo_acceso FROM usuarios ORDER BY id").fetchall()
-        for uid,uname,rol_u,nombre_u,activo_u,creado,ultimo in users:
-            rol_css={"admin":"role-admin","supervisor":"role-supervisor","tecnico":"role-tecnico"}.get(rol_u,"role-tecnico")
-            activo_icon="🟢" if activo_u else "🔴"
-            c1,c2,c3,c4=st.columns([3,2,2,1])
+        st.markdown('<div class="sec-head">Usuarios registrados</div>', unsafe_allow_html=True)
+        users = db_con.execute(
+            "SELECT id,username,rol,nombre,activo,creado_en,ultimo_acceso FROM usuarios ORDER BY id"
+        ).fetchall()
+        for uid, uname, rol_u, nombre_u, activo_u, creado, ultimo in users:
+            rol_css = {
+                "admin": "role-admin",
+                "supervisor": "role-supervisor",
+                "tecnico": "role-tecnico",
+            }.get(rol_u, "role-tecnico")
+            activo_icon = "🟢" if activo_u else "🔴"
+            c1, c2, c3, c4 = st.columns([3, 2, 2, 1])
             with c1:
-                st.markdown(f'<div class="audit-row">{activo_icon} <b>{uname}</b> '
-                            f'&nbsp;<span class="{rol_css}">{rol_u.upper()}</span>'
-                            f'{"&nbsp;<i>"+nombre_u+"</i>" if nombre_u else ""}</div>',unsafe_allow_html=True)
-            with c2: st.caption(f"Creado: {creado[:10] if creado else '—'}")
-            with c3: st.caption(f"Último acceso: {ultimo[:16] if ultimo else 'nunca'}")
+                st.markdown(
+                    f'<div class="audit-row">{activo_icon} <b>{uname}</b> '
+                    f'&nbsp;<span class="{rol_css}">{rol_u.upper()}</span>'
+                    f'{"&nbsp;<i>" + nombre_u + "</i>" if nombre_u else ""}</div>',
+                    unsafe_allow_html=True,
+                )
+            with c2:
+                st.caption(f"Creado: {creado[:10] if creado else '—'}")
+            with c3:
+                st.caption(f"Último acceso: {ultimo[:16] if ultimo else 'nunca'}")
             with c4:
-                if uname!=usuario_actual:
-                    btn_lbl="Desactivar" if activo_u else "Activar"
-                    if st.button(btn_lbl,key=f"toggle_{uid}",use_container_width=True):
-                        db_con.execute("UPDATE usuarios SET activo=? WHERE id=?",(0 if activo_u else 1,uid))
+                if uname != usuario_actual:
+                    btn_lbl = "Desactivar" if activo_u else "Activar"
+                    if st.button(btn_lbl, key=f"toggle_{uid}", use_container_width=True):
+                        db_con.execute(
+                            "UPDATE usuarios SET activo=? WHERE id=?", (0 if activo_u else 1, uid)
+                        )
                         db_con.commit()
-                        registrar_auditoria(db_con,usuario_actual,f"USUARIO_{btn_lbl.upper()}",uname)
+                        registrar_auditoria(
+                            db_con, usuario_actual, f"USUARIO_{btn_lbl.upper()}", uname
+                        )
                         st.rerun()
 
         st.markdown("---")
-        st.markdown('<div class="sec-head">Crear nuevo usuario</div>',unsafe_allow_html=True)
-        with st.form("form_nuevo_usuario",clear_on_submit=True):
-            col_f1,col_f2=st.columns(2)
+        st.markdown('<div class="sec-head">Crear nuevo usuario</div>', unsafe_allow_html=True)
+        with st.form("form_nuevo_usuario", clear_on_submit=True):
+            col_f1, col_f2 = st.columns(2)
             with col_f1:
-                nuevo_user=st.text_input("Nombre de usuario*",placeholder="tecnico01")
-                nuevo_nombre=st.text_input("Nombre completo",placeholder="Ana García")
+                nuevo_user = st.text_input("Nombre de usuario*", placeholder="tecnico01")
+                nuevo_nombre = st.text_input("Nombre completo", placeholder="Ana García")
             with col_f2:
-                nuevo_pwd=st.text_input("Contraseña*",type="password",placeholder="Min. 8 caracteres")
-                nuevo_rol=st.selectbox("Rol",options=["tecnico","supervisor","admin"])
-            if st.form_submit_button("➕ Crear usuario",type="primary",use_container_width=True):
-                if not nuevo_user or not nuevo_pwd: st.error("Usuario y contraseña son obligatorios.")
-                elif len(nuevo_pwd)<8: st.error("La contraseña debe tener al menos 8 caracteres.")
+                nuevo_pwd = st.text_input(
+                    "Contraseña*", type="password", placeholder="Min. 8 caracteres"
+                )
+                nuevo_rol = st.selectbox("Rol", options=["tecnico", "supervisor", "admin"])
+            if st.form_submit_button("➕ Crear usuario", type="primary", use_container_width=True):
+                if not nuevo_user or not nuevo_pwd:
+                    st.error("Usuario y contraseña son obligatorios.")
+                elif len(nuevo_pwd) < 8:
+                    st.error("La contraseña debe tener al menos 8 caracteres.")
                 else:
-                    existe=db_con.execute("SELECT id FROM usuarios WHERE username=?",(nuevo_user,)).fetchone()
-                    if existe: st.error(f"El usuario '{nuevo_user}' ya existe.")
+                    existe = db_con.execute(
+                        "SELECT id FROM usuarios WHERE username=?", (nuevo_user,)
+                    ).fetchone()
+                    if existe:
+                        st.error(f"El usuario '{nuevo_user}' ya existe.")
                     else:
-                        pwd_h=hash_password(nuevo_pwd)
-                        db_con.execute("INSERT INTO usuarios (username,password_hash,rol,nombre) VALUES (?,?,?,?)",
-                                       (nuevo_user,pwd_h,nuevo_rol,nuevo_nombre))
+                        pwd_h = hash_password(nuevo_pwd)
+                        db_con.execute(
+                            "INSERT INTO usuarios (username,password_hash,rol,nombre) VALUES (?,?,?,?)",
+                            (nuevo_user, pwd_h, nuevo_rol, nuevo_nombre),
+                        )
                         db_con.commit()
-                        registrar_auditoria(db_con,usuario_actual,"USUARIO_CREADO",f"{nuevo_user} [{nuevo_rol}]")
-                        st.success(f"✅ Usuario **{nuevo_user}** creado con rol **{nuevo_rol}**."); st.rerun()
+                        registrar_auditoria(
+                            db_con, usuario_actual, "USUARIO_CREADO", f"{nuevo_user} [{nuevo_rol}]"
+                        )
+                        st.success(f"✅ Usuario **{nuevo_user}** creado con rol **{nuevo_rol}**.")
+                        st.rerun()
 
         st.markdown("---")
-        st.markdown('<div class="sec-head">Cambiar contraseña</div>',unsafe_allow_html=True)
-        with st.form("form_cambiar_pwd",clear_on_submit=True):
-            usuarios_lista=[r[0] for r in db_con.execute("SELECT username FROM usuarios ORDER BY username").fetchall()]
-            cambiar_a=st.selectbox("Usuario",options=usuarios_lista)
-            nueva_pwd=st.text_input("Nueva contraseña*",type="password",placeholder="Min. 8 caracteres")
-            confirmar_pwd=st.text_input("Confirmar contraseña*",type="password")
-            if st.form_submit_button("🔑 Cambiar contraseña",type="primary"):
-                if len(nueva_pwd)<8: st.error("Mínimo 8 caracteres.")
-                elif nueva_pwd!=confirmar_pwd: st.error("Las contraseñas no coinciden.")
+        st.markdown('<div class="sec-head">Cambiar contraseña</div>', unsafe_allow_html=True)
+        with st.form("form_cambiar_pwd", clear_on_submit=True):
+            usuarios_lista = [
+                r[0]
+                for r in db_con.execute(
+                    "SELECT username FROM usuarios ORDER BY username"
+                ).fetchall()
+            ]
+            cambiar_a = st.selectbox("Usuario", options=usuarios_lista)
+            nueva_pwd = st.text_input(
+                "Nueva contraseña*", type="password", placeholder="Min. 8 caracteres"
+            )
+            confirmar_pwd = st.text_input("Confirmar contraseña*", type="password")
+            if st.form_submit_button("🔑 Cambiar contraseña", type="primary"):
+                if len(nueva_pwd) < 8:
+                    st.error("Mínimo 8 caracteres.")
+                elif nueva_pwd != confirmar_pwd:
+                    st.error("Las contraseñas no coinciden.")
                 else:
-                    pwd_h=hash_password(nueva_pwd)
-                    db_con.execute("UPDATE usuarios SET password_hash=? WHERE username=?",(pwd_h,cambiar_a))
+                    pwd_h = hash_password(nueva_pwd)
+                    db_con.execute(
+                        "UPDATE usuarios SET password_hash=? WHERE username=?", (pwd_h, cambiar_a)
+                    )
                     db_con.commit()
-                    registrar_auditoria(db_con,usuario_actual,"CAMBIO_PASSWORD",cambiar_a)
+                    registrar_auditoria(db_con, usuario_actual, "CAMBIO_PASSWORD", cambiar_a)
                     st.success(f"✅ Contraseña de **{cambiar_a}** actualizada.")
 
         st.markdown("---")
-        st.markdown('<div class="sec-head">Registro de auditoría</div>',unsafe_allow_html=True)
-        _,col_aud2=st.columns([3,1])
+        st.markdown('<div class="sec-head">Registro de auditoría</div>', unsafe_allow_html=True)
+        _, col_aud2 = st.columns([3, 1])
         with col_aud2:
-            n_registros=st.number_input("Mostrar últimos",min_value=10,max_value=500,value=50,step=10,key="aud_n")
-        audit_rows=db_con.execute("SELECT ts,usuario,accion,detalle FROM auditoria ORDER BY id DESC LIMIT ?",(int(n_registros),)).fetchall()
-        if not audit_rows: st.info("Sin registros de auditoría aún.")
+            n_registros = st.number_input(
+                "Mostrar últimos", min_value=10, max_value=500, value=50, step=10, key="aud_n"
+            )
+        audit_rows = db_con.execute(
+            "SELECT ts,usuario,accion,detalle FROM auditoria ORDER BY id DESC LIMIT ?",
+            (int(n_registros),),
+        ).fetchall()
+        if not audit_rows:
+            st.info("Sin registros de auditoría aún.")
         else:
-            for ts,aud_user,accion,detalle in audit_rows:
-                color_accion={"LOGIN_OK":"#0D9E6E","LOGIN_FALLIDO":"#E53E3E","LOGOUT":"#94A3B8",
-                              "EXPORT_PDF":"#1A6FC4","SYNC_GITHUB":"#6B5CA5"}.get(accion,"#475569")
+            for ts, aud_user, accion, detalle in audit_rows:
+                color_accion = {
+                    "LOGIN_OK": "#0D9E6E",
+                    "LOGIN_FALLIDO": "#E53E3E",
+                    "LOGOUT": "#94A3B8",
+                    "EXPORT_PDF": "#1A6FC4",
+                    "SYNC_GITHUB": "#6B5CA5",
+                }.get(accion, "#475569")
                 st.markdown(
                     f'<div class="audit-row">'
                     f'<span style="color:#94A3B8;font-size:.75rem">{ts[:16]}</span>&nbsp;&nbsp;'
                     f'<b style="color:#1C2B3A">{aud_user}</b>&nbsp;&nbsp;'
                     f'<span style="color:{color_accion};font-weight:700;font-size:.78rem">{accion}</span>'
-                    f'{"&nbsp;&nbsp;<span style=color:#64748B;font-size:.78rem>"+detalle[:80]+"</span>" if detalle else ""}'
-                    f'</div>',unsafe_allow_html=True)
-
+                    f'{"&nbsp;&nbsp;<span style=color:#64748B;font-size:.78rem>" + detalle[:80] + "</span>" if detalle else ""}'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
 
 # ── TAB 8: CONFIGURACIÓN ─────────────────────────────────────
 with tab_cfg:
-    st.markdown("### ⚙️ Configuración del laboratorio")
+    st.markdown("### ⚙ Configuración del laboratorio")
     st.caption("Introduce los valores objetivo de tus controles y el lote activo.")
+    if "cfg_analitos" not in st.session_state:
+        st.session_state["cfg_analitos"] = {}
+    if "cfg_lote" not in st.session_state:
+        st.session_state["cfg_lote"] = "LOT-2025"
 
-    if "cfg_analitos" not in st.session_state: st.session_state["cfg_analitos"]={}
-    if "cfg_lote"     not in st.session_state: st.session_state["cfg_lote"]="LOT-2025"
-
-    st.markdown('<div class="sec-head">🏷️ Lote de reactivos activo</div>',unsafe_allow_html=True)
-    col_lote1,_=st.columns([2,3])
+    st.markdown('<div class="sec-head">🏷 Lote de reactivos activo</div>', unsafe_allow_html=True)
+    col_lote1, _ = st.columns([2, 3])
     with col_lote1:
-        lote_input=st.text_input("Número de lote",value=st.session_state["cfg_lote"],placeholder="Ej: LOT-2025-A")
-        if st.button("💾 Guardar lote",type="primary",key="btn_lote"):
-            st.session_state["cfg_lote"]=lote_input.strip()
-            for k in ["df_github","df_manual"]:
-                if st.session_state.get(k) is not None: st.session_state[k]["Lote"]=lote_input.strip()
-            registrar_auditoria(db_con,usuario_actual,"CFG_LOTE",lote_input.strip())
+        lote_input = st.text_input(
+            "Número de lote", value=st.session_state["cfg_lote"], placeholder="Ej: LOT-2025-A"
+        )
+        if st.button("💾 Guardar lote", type="primary", key="btn_lote"):
+            st.session_state["cfg_lote"] = lote_input.strip()
+            for k in ["df_github", "df_manual"]:
+                if st.session_state.get(k) is not None:
+                    st.session_state[k]["Lote"] = lote_input.strip()
+            registrar_auditoria(db_con, usuario_actual, "CFG_LOTE", lote_input.strip())
             st.success(f"✅ Lote guardado: **{lote_input.strip()}**")
 
-    st.markdown('<div class="sec-head">🎯 Valores objetivo (Media y SD)</div>',unsafe_allow_html=True)
-    st.info("Introduce los valores objetivo para cada analito y nivel.",icon="ℹ️")
-
-    analitos_cfg=sorted(df_all["Analito"].unique()) if not df_all.empty else []
-    niveles_cfg=["N","PB","PA"]
-    nivel_nombres={"N":"Normal","PB":"Patológico Bajo","PA":"Patológico Alto"}
-    cfg_actualizada={}
-
+    st.markdown(
+        '<div class="sec-head">🎯 Valores objetivo (Media y SD)</div>', unsafe_allow_html=True
+    )
+    st.info("Introduce los valores objetivo para cada analito y nivel.", icon="ℹ")
+    analitos_cfg = sorted(df_all["Analito"].unique()) if not df_all.empty else []
+    niveles_cfg = ["N", "PB", "PA"]
+    nivel_nombres = {"N": "Normal", "PB": "Patológico Bajo", "PA": "Patológico Alto"}
+    cfg_actualizada = {}
     for an in analitos_cfg:
         st.markdown(f"#### 🔬 {an}")
-        cols_niv=st.columns(3)
-        for col,niv in zip(cols_niv,niveles_cfg):
+        cols_niv = st.columns(3)
+        for col, niv in zip(cols_niv, niveles_cfg):
             with col:
-                saved=st.session_state["cfg_analitos"].get(f"{an}_{niv}",{})
-                media_saved=saved.get("media",0.0); sd_saved=saved.get("sd",0.0)
-                sub_datos=df_all[(df_all["Analito"]==an)&(df_all["Nivel"]==niv)]
-                if not sub_datos.empty and media_saved==0.0:
-                    media_saved=float(sub_datos["Media_Objetivo"].iloc[0])
-                    sd_saved=float(sub_datos["SD_Objetivo"].iloc[0])
+                saved = st.session_state["cfg_analitos"].get(f"{an}_{niv}", {})
+                media_saved = saved.get("media", 0.0)
+                sd_saved = saved.get("sd", 0.0)
+                sub_datos = df_all[(df_all["Analito"] == an) & (df_all["Nivel"] == niv)]
+                if not sub_datos.empty and media_saved == 0.0:
+                    media_saved = float(sub_datos["Media_Objetivo"].iloc[0])
+                    sd_saved = float(sub_datos["SD_Objetivo"].iloc[0])
                 st.markdown(f"**{nivel_nombres[niv]}**")
-                media_v=st.number_input(f"Media ({niv})",min_value=0.0,value=float(media_saved),
-                                        step=0.01,format="%.4f",key=f"media_{an}_{niv}")
-                sd_v=st.number_input(f"SD ({niv})",min_value=0.0,value=float(sd_saved),
-                                     step=0.001,format="%.4f",key=f"sd_{an}_{niv}")
-                cfg_actualizada[f"{an}_{niv}"]={"media":media_v,"sd":sd_v}
+                media_v = st.number_input(
+                    f"Media ({niv})",
+                    min_value=0.0,
+                    value=float(media_saved),
+                    step=0.01,
+                    format="%.4f",
+                    key=f"media_{an}_{niv}",
+                )
+                sd_v = st.number_input(
+                    f"SD ({niv})",
+                    min_value=0.0,
+                    value=float(sd_saved),
+                    step=0.001,
+                    format="%.4f",
+                    key=f"sd_{an}_{niv}",
+                )
+                cfg_actualizada[f"{an}_{niv}"] = {"media": media_v, "sd": sd_v}
         st.markdown("---")
-
-    if st.button("💾 Guardar valores objetivo",type="primary",key="btn_cfg_analitos"):
-        st.session_state["cfg_analitos"]=cfg_actualizada
-        for fuente_key in ["df_github","df_manual"]:
-            df_f=st.session_state.get(fuente_key)
-            if df_f is None: continue
+    if st.button("💾 Guardar valores objetivo", type="primary", key="btn_cfg_analitos"):
+        st.session_state["cfg_analitos"] = cfg_actualizada
+        for fuente_key in ["df_github", "df_manual"]:
+            df_f = st.session_state.get(fuente_key)
+            if df_f is None:
+                continue
             for an in analitos_cfg:
                 for niv in niveles_cfg:
-                    vals=cfg_actualizada.get(f"{an}_{niv}",{})
-                    media_n=vals.get("media",0.0); sd_n=vals.get("sd",0.0)
-                    if media_n>0 and sd_n>0:
-                        mask=(df_f["Analito"]==an)&(df_f["Nivel"]==niv)
-                        df_f.loc[mask,"Media_Objetivo"]=media_n
-                        df_f.loc[mask,"SD_Objetivo"]=sd_n
-            st.session_state[fuente_key]=df_f
-        registrar_auditoria(db_con,usuario_actual,"CFG_VALORES_OBJETIVO",f"{len(cfg_actualizada)} entradas")
-        st.success("✅ Valores objetivo guardados y aplicados."); st.rerun()
+                    vals = cfg_actualizada.get(f"{an}_{niv}", {})
+                    media_n = vals.get("media", 0.0)
+                    sd_n = vals.get("sd", 0.0)
+                    if media_n > 0 and sd_n > 0:
+                        mask = (df_f["Analito"] == an) & (df_f["Nivel"] == niv)
+                        df_f.loc[mask, "Media_Objetivo"] = media_n
+                        df_f.loc[mask, "SD_Objetivo"] = sd_n
+            st.session_state[fuente_key] = df_f
+        registrar_auditoria(
+            db_con, usuario_actual, "CFG_VALORES_OBJETIVO", f"{len(cfg_actualizada)} entradas"
+        )
+        st.success("✅ Valores objetivo guardados y aplicados.")
+        st.rerun()
 
-    st.markdown('<div class="sec-head">📊 Estado de la sincronización</div>',unsafe_allow_html=True)
-    col_s1,col_s2,col_s3=st.columns(3)
-    ultima_s=st.session_state.get("github_last_sync")
-    with col_s1: st.metric("Fuente activa",data_src.replace("☁️ ","").replace("🔬 ","").replace("📄 ",""))
-    with col_s2: st.metric("Última sync",ultima_s.strftime("%d/%m %H:%M") if ultima_s else "—")
-    with col_s3: st.metric("Registros",len(df_all) if not df_all.empty else 0)
-
-    tiene_gh=bool(st.secrets.get("github",{}).get("usuario") and st.secrets.get("github",{}).get("repo"))
-    if st.button("🔄 Sincronizar desde GitHub",use_container_width=True,type="primary",
-                 key="btn_sync_cfg",disabled=not tiene_gh):
+    st.markdown(
+        '<div class="sec-head">📊 Estado de la sincronización</div>', unsafe_allow_html=True
+    )
+    col_s1, col_s2, col_s3 = st.columns(3)
+    ultima_s = st.session_state.get("github_last_sync")
+    with col_s1:
+        st.metric("Fuente activa", data_src.replace("☁ ", "").replace("🔬 ", "").replace("📄 ", ""))
+    with col_s2:
+        st.metric("Última sync", ultima_s.strftime("%d/%m %H:%M") if ultima_s else "—")
+    with col_s3:
+        st.metric("Registros", len(df_all) if not df_all.empty else 0)
+    tiene_gh = bool(get_section("github").get("usuario") and get_section("github").get("repo"))
+    if st.button(
+        "🔄 Sincronizar desde GitHub",
+        use_container_width=True,
+        type="primary",
+        key="btn_sync_cfg",
+        disabled=not tiene_gh,
+    ):
         with st.spinner("Conectando con GitHub…"):
-            df_gh,msg=leer_csv_github()
-            if df_gh is not None:
-                cfg_actual=st.session_state.get("cfg_analitos",{})
-                lote_actual=st.session_state.get("cfg_lote","LOT-2025")
-                for an in df_gh["Analito"].unique():
-                    for niv in df_gh["Nivel"].unique():
-                        vals=cfg_actual.get(f"{an}_{niv}",{})
-                        if vals.get("media",0)>0 and vals.get("sd",0)>0:
-                            mask=(df_gh["Analito"]==an)&(df_gh["Nivel"]==niv)
-                            df_gh.loc[mask,"Media_Objetivo"]=vals["media"]
-                            df_gh.loc[mask,"SD_Objetivo"]=vals["sd"]
-                df_gh["Lote"]=lote_actual
-                st.session_state["df_github"]=df_gh
-                st.session_state["data_src_github"]=msg
-                st.session_state["github_last_sync"]=datetime.now()
-                registrar_auditoria(db_con,usuario_actual,"SYNC_GITHUB",msg)
-                st.success(msg); st.rerun()
-            else: st.error(msg)
+            df_gh, msg = leer_csv_github()
+        if df_gh is not None:
+            cfg_actual = st.session_state.get("cfg_analitos", {})
+            lote_actual = st.session_state.get("cfg_lote", "LOT-2025")
+            for an in df_gh["Analito"].unique():
+                for niv in df_gh["Nivel"].unique():
+                    vals = cfg_actual.get(f"{an}_{niv}", {})
+                    if vals.get("media", 0) > 0 and vals.get("sd", 0) > 0:
+                        mask = (df_gh["Analito"] == an) & (df_gh["Nivel"] == niv)
+                        df_gh.loc[mask, "Media_Objetivo"] = vals["media"]
+                        df_gh.loc[mask, "SD_Objetivo"] = vals["sd"]
+            df_gh["Lote"] = lote_actual
+            st.session_state["df_github"] = df_gh
+            st.session_state["data_src_github"] = msg
+            st.session_state["github_last_sync"] = datetime.now()
+            registrar_auditoria(db_con, usuario_actual, "SYNC_GITHUB", msg)
+            st.success(msg)
+            st.rerun()
